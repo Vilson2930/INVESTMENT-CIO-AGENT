@@ -4,13 +4,10 @@ from datetime import datetime, timezone
 SYSTEM_ID = "global_portfolio"
 SYSTEM_NAME = "COPIAULTIMOROB"
 SOURCE_SYSTEM = "COPIAULTIMOROB"
-ADAPTER_VERSION = "1.1"
+ADAPTER_VERSION = "1.2"
 
 
 def _to_float(value, default=None):
-    """
-    Converte um valor para float com segurança.
-    """
     if value is None:
         return default
 
@@ -21,9 +18,6 @@ def _to_float(value, default=None):
 
 
 def _to_bool(value, default=None):
-    """
-    Converte valores comuns para booleano.
-    """
     if isinstance(value, bool):
         return value
 
@@ -43,13 +37,6 @@ def _to_bool(value, default=None):
 
 
 def _normalize_confidence(value):
-    """
-    Converte confidence score para escala universal 0.0 - 1.0.
-
-    Exemplos:
-        66.40 -> 0.664
-        0.92  -> 0.92
-    """
     number = _to_float(value)
 
     if number is None:
@@ -62,9 +49,6 @@ def _normalize_confidence(value):
 
 
 def _get_section(payload, *names):
-    """
-    Procura uma seção usando nomes alternativos.
-    """
     for name in names:
         section = payload.get(name)
 
@@ -75,9 +59,6 @@ def _get_section(payload, *names):
 
 
 def _first_value(*values):
-    """
-    Retorna o primeiro valor não vazio.
-    """
     for value in values:
         if value is not None and value != "":
             return value
@@ -86,9 +67,6 @@ def _first_value(*values):
 
 
 def _extract_warnings(payload):
-    """
-    Consolida alertas importantes do COPIAULTIMOROB.
-    """
     warnings = []
 
     survival = _get_section(
@@ -255,13 +233,6 @@ def _extract_warnings(payload):
 
 
 def _determine_status(payload, warnings):
-    """
-    Determina o status técnico do output universal.
-
-    IMPORTANTE:
-    WARNING não altera a decisão original do robô.
-    Apenas informa ao CIO Agent que existem alertas relevantes.
-    """
     governance = _get_section(
         payload,
         "governance",
@@ -311,12 +282,15 @@ def _determine_status(payload, warnings):
 
 def build_copiaultimorob_agent_output(payload):
     """
-    Converte o output bruto do COPIAULTIMOROB
-    para o contrato universal do INVESTMENT CIO AGENT.
+    Traduz a saída do COPIAULTIMOROB para o contrato
+    universal do INVESTMENT CIO AGENT.
 
-    O adaptador NÃO recalcula a estratégia.
-    O adaptador NÃO altera decisões.
-    O adaptador apenas traduz e organiza os dados.
+    Este adaptador:
+    - não recalcula a estratégia;
+    - não altera sinais;
+    - não altera o veredito;
+    - não altera regras de risco;
+    - apenas traduz e organiza os dados.
     """
 
     if not isinstance(payload, dict):
@@ -525,9 +499,67 @@ def build_copiaultimorob_agent_output(payload):
         ruin_risk,
     )
 
+    ai_audit_status = _first_value(
+        ai_audit.get("ai_audit_status"),
+        payload.get("ai_audit_status"),
+    )
+
+    ai_audit_score = _to_float(
+        _first_value(
+            ai_audit.get("ai_audit_score"),
+            payload.get("ai_audit_score"),
+        )
+    )
+
+    ai_root_cause = _first_value(
+        ai_audit.get("root_cause"),
+        payload.get("ai_root_cause"),
+    )
+
+    nvidia_status = _first_value(
+        nvidia_audit.get("openai_audit_status"),
+        nvidia_audit.get("status"),
+        payload.get("nvidia_status"),
+    )
+
+    nvidia_verdict = _first_value(
+        nvidia_audit.get("audit_verdict"),
+        payload.get("nvidia_verdict"),
+    )
+
+    nvidia_score = _to_float(
+        _first_value(
+            nvidia_audit.get("audit_score"),
+            payload.get("nvidia_score"),
+        )
+    )
+
+    nvidia_confidence = _to_float(
+        _first_value(
+            nvidia_audit.get("audit_confidence"),
+            payload.get("nvidia_confidence"),
+        )
+    )
+
+    nvidia_severity = _first_value(
+        nvidia_audit.get("severity"),
+        payload.get("nvidia_severity"),
+    )
+
+    nvidia_root_cause = _first_value(
+        nvidia_audit.get("root_cause"),
+        payload.get("nvidia_root_cause"),
+    )
+
+    nvidia_final_opinion = _first_value(
+        nvidia_audit.get("final_opinion"),
+        payload.get("nvidia_final_opinion"),
+    )
+
     data_quality_score = _first_value(
         nvidia_audit.get("data_quality_score"),
         ai_audit.get("data_quality_score"),
+        payload.get("data_quality_score"),
     )
 
     output = {
@@ -652,12 +684,12 @@ def build_copiaultimorob_agent_output(payload):
                 )
             ),
 
-            # Compatibilidade com a versão anterior
+            # Mantido por compatibilidade.
             "forced_selling": _to_bool(
                 forced_selling_value
             ),
 
-            # Campo canônico esperado pelos testes/CIO Agent
+            # Nome esperado pelo teste e pelo contrato operacional.
             "forced_selling_any": _to_bool(
                 forced_selling_value
             ),
@@ -752,82 +784,23 @@ def build_copiaultimorob_agent_output(payload):
         "opportunities": [],
 
         "audit": {
-            "deterministic_audit_status": _first_value(
-                ai_audit.get("ai_audit_status"),
-                payload.get("ai_audit_status"),
-            ),
+            # Nomes canônicos esperados pelos testes.
+            "ai_audit_status": ai_audit_status,
+            "ai_audit_score": ai_audit_score,
+            "ai_root_cause": ai_root_cause,
 
-            "deterministic_audit_score": _to_float(
-                _first_value(
-                    ai_audit.get("ai_audit_score"),
-                    payload.get("ai_audit_score"),
-                )
-            ),
+            # Nomes anteriores mantidos para compatibilidade.
+            "deterministic_audit_status": ai_audit_status,
+            "deterministic_audit_score": ai_audit_score,
+            "deterministic_root_cause": ai_root_cause,
 
-            "deterministic_root_cause": _first_value(
-                ai_audit.get("root_cause"),
-                payload.get("ai_root_cause"),
-            ),
-
-            "nvidia_status": _first_value(
-                nvidia_audit.get(
-                    "openai_audit_status"
-                ),
-                nvidia_audit.get("status"),
-                payload.get("nvidia_status"),
-            ),
-
-            "nvidia_verdict": _first_value(
-                nvidia_audit.get(
-                    "audit_verdict"
-                ),
-                payload.get(
-                    "nvidia_verdict"
-                ),
-            ),
-
-            "nvidia_score": _to_float(
-                _first_value(
-                    nvidia_audit.get(
-                        "audit_score"
-                    ),
-                    payload.get(
-                        "nvidia_score"
-                    ),
-                )
-            ),
-
-            "nvidia_confidence": _to_float(
-                _first_value(
-                    nvidia_audit.get(
-                        "audit_confidence"
-                    ),
-                    payload.get(
-                        "nvidia_confidence"
-                    ),
-                )
-            ),
-
-            "nvidia_severity": _first_value(
-                nvidia_audit.get("severity"),
-                payload.get("nvidia_severity"),
-            ),
-
-            "nvidia_root_cause": _first_value(
-                nvidia_audit.get("root_cause"),
-                payload.get(
-                    "nvidia_root_cause"
-                ),
-            ),
-
-            "nvidia_final_opinion": _first_value(
-                nvidia_audit.get(
-                    "final_opinion"
-                ),
-                payload.get(
-                    "nvidia_final_opinion"
-                ),
-            ),
+            "nvidia_status": nvidia_status,
+            "nvidia_verdict": nvidia_verdict,
+            "nvidia_score": nvidia_score,
+            "nvidia_confidence": nvidia_confidence,
+            "nvidia_severity": nvidia_severity,
+            "nvidia_root_cause": nvidia_root_cause,
+            "nvidia_final_opinion": nvidia_final_opinion,
         },
 
         "metadata": {
