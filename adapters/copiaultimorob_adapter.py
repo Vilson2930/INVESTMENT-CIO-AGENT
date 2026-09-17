@@ -794,6 +794,16 @@ def build_copiaultimorob_agent_output(payload):
             "deterministic_audit_score": ai_audit_score,
             "deterministic_root_cause": ai_root_cause,
 
+            # Nomes canônicos da auditoria NVIDIA esperados pelo CIO Agent.
+            "nvidia_audit_status": nvidia_status,
+            "nvidia_audit_verdict": nvidia_verdict,
+            "nvidia_audit_score": nvidia_score,
+            "nvidia_audit_confidence": nvidia_confidence,
+            "nvidia_audit_severity": nvidia_severity,
+            "nvidia_audit_root_cause": nvidia_root_cause,
+            "nvidia_audit_final_opinion": nvidia_final_opinion,
+
+            # Nomes anteriores preservados para compatibilidade.
             "nvidia_status": nvidia_status,
             "nvidia_verdict": nvidia_verdict,
             "nvidia_score": nvidia_score,
