@@ -7,7 +7,7 @@
 # SP500_CYCLE_ATLAS -> INVESTMENT CIO AGENT
 #
 # O adaptador NÃO recalcula indicadores.
-# Apenas traduz a saída do Atlas para o contrato universal.
+# Apenas traduz a saída real do Atlas para o contrato universal.
 #
 # ============================================================
 
@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 SYSTEM_ID = "sp500_cycle"
 SYSTEM_NAME = "SP500_CYCLE_ATLAS"
 SCHEMA_VERSION = "1.0"
+ADAPTER_VERSION = "1.1"
 
 
 def _safe_float(value):
@@ -26,6 +27,7 @@ def _safe_float(value):
 
     try:
         return float(value)
+
     except (TypeError, ValueError):
         return None
 
@@ -37,22 +39,94 @@ def _normalize_confidence(value):
     if value is None:
         return None
 
-    # Permite que o Atlas forneça 0-1 ou 0-100.
     if value > 1:
         value = value / 100
 
-    return max(0.0, min(1.0, value))
+    return max(
+        0.0,
+        min(1.0, value)
+    )
 
 
-def build_sp500_agent_output(state):
+def _extract_audit_warnings(ai_audit):
 
-    if not isinstance(state, dict):
-        raise TypeError(
-            "A saída do SP500 Cycle Atlas deve ser um dicionário."
-        )
+    warnings = ai_audit.get(
+        "warnings"
+    )
+
+    if warnings is None:
+        return []
+
+    if isinstance(warnings, list):
+        return [
+            str(item)
+            for item in warnings
+        ]
+
+    return [
+        str(warnings)
+    ]
+
+
+def build_sp500_agent_output(payload):
 
     # ========================================================
-    # DECISÃO ORIGINAL DO ATLAS
+    # 1. VALIDAÇÃO DA SAÍDA BRUTA
+    # ========================================================
+
+    if not isinstance(payload, dict):
+
+        raise TypeError(
+            "A saída bruta do SP500 Cycle Atlas "
+            "deve ser um dicionário."
+        )
+
+    source_system = payload.get(
+        "source_system"
+    )
+
+    if source_system != SYSTEM_NAME:
+
+        raise ValueError(
+            "source_system inválido para o "
+            "SP500 Cycle Atlas."
+        )
+
+    state = payload.get(
+        "current_state"
+    )
+
+    ai_audit = payload.get(
+        "ai_audit"
+    )
+
+    if not isinstance(state, dict):
+
+        raise ValueError(
+            "current_state ausente ou inválido "
+            "na saída do Atlas."
+        )
+
+    if not isinstance(ai_audit, dict):
+
+        ai_audit = {}
+
+    # ========================================================
+    # 2. IDENTIDADE TEMPORAL
+    # ========================================================
+
+    generated_at = payload.get(
+        "generated_at"
+    )
+
+    if not generated_at:
+
+        generated_at = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+    # ========================================================
+    # 3. DECISÃO ORIGINAL DO ATLAS
     # ========================================================
 
     existing_position = state.get(
@@ -60,34 +134,76 @@ def build_sp500_agent_output(state):
     )
 
     equity_allocation = _safe_float(
-        state.get("new_contribution_equity")
+        state.get(
+            "new_contribution_equity"
+        )
     )
 
     reserve_allocation = _safe_float(
-        state.get("new_contribution_reserve")
+        state.get(
+            "new_contribution_reserve"
+        )
     )
 
-    confidence = _normalize_confidence(
-        state.get("confidence")
+    operational_regime = state.get(
+        "operational_regime"
     )
 
     signal = (
         existing_position
-        or state.get("operational_regime")
+        or operational_regime
         or "UNDEFINED"
     )
 
     # ========================================================
-    # QUALIDADE DOS DADOS
+    # 4. AUDITORIA INDEPENDENTE
     # ========================================================
 
-    warnings = []
+    audit_status = ai_audit.get(
+        "audit_status"
+    )
+
+    engine_consistency_score = (
+        _safe_float(
+            ai_audit.get(
+                "engine_consistency_score"
+            )
+        )
+    )
+
+    audit_data_quality_score = (
+        _safe_float(
+            ai_audit.get(
+                "data_quality_score"
+            )
+        )
+    )
+
+    ai_dissent = ai_audit.get(
+        "ai_dissent"
+    )
+
+    # Usamos a consistência da auditoria como medida
+    # informacional de confiança do output.
+    #
+    # Isso NÃO altera a decisão do Atlas.
+    confidence = _normalize_confidence(
+        engine_consistency_score
+    )
+
+    # ========================================================
+    # 5. QUALIDADE DOS DADOS
+    # ========================================================
 
     critical_fields = [
+        "date",
         "sp500",
         "drawdown",
         "cape",
-        "operational_regime"
+        "operational_regime",
+        "existing_position",
+        "new_contribution_equity",
+        "new_contribution_reserve",
     ]
 
     missing_fields = [
@@ -96,19 +212,43 @@ def build_sp500_agent_output(state):
         if state.get(field) is None
     ]
 
+    warnings = []
+
     if missing_fields:
+
         warnings.append(
-            "Campos críticos ausentes na saída do Atlas."
+            "Campos críticos ausentes na "
+            "saída do SP500 Cycle Atlas."
         )
 
-    status = (
-        "WARNING"
-        if missing_fields
-        else "OK"
+    warnings.extend(
+        _extract_audit_warnings(
+            ai_audit
+        )
     )
 
+    if missing_fields:
+
+        status = "WARNING"
+
+    elif audit_status in {
+        "CONFIRMED_WITH_WARNINGS",
+        "WARNING",
+        "DATA_INSUFFICIENT",
+    }:
+
+        status = "WARNING"
+
+    elif ai_dissent is True:
+
+        status = "WARNING"
+
+    else:
+
+        status = "OK"
+
     # ========================================================
-    # CONTRATO UNIVERSAL
+    # 6. CONTRATO UNIVERSAL
     # ========================================================
 
     output = {
@@ -119,15 +259,19 @@ def build_sp500_agent_output(state):
 
         "system_name": SYSTEM_NAME,
 
-        "generated_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
+        "generated_at": generated_at,
 
         "status": status,
 
+        # ====================================================
+        # DECISÃO
+        # ====================================================
+
         "decision": {
 
-            "signal": str(signal),
+            "signal": str(
+                signal
+            ),
 
             "confidence": confidence,
 
@@ -136,57 +280,161 @@ def build_sp500_agent_output(state):
                 "SP500 Cycle Atlas."
             ),
 
-            "existing_position": existing_position,
+            "operational_regime": (
+                operational_regime
+            ),
 
-            "new_contribution_equity": equity_allocation,
+            "existing_position": (
+                existing_position
+            ),
 
-            "new_contribution_reserve": reserve_allocation
+            "new_contribution_equity": (
+                equity_allocation
+            ),
+
+            "new_contribution_reserve": (
+                reserve_allocation
+            ),
         },
+
+        # ====================================================
+        # MÉTRICAS
+        # ====================================================
 
         "metrics": {
 
+            "date": state.get(
+                "date"
+            ),
+
             "sp500": _safe_float(
-                state.get("sp500")
+                state.get(
+                    "sp500"
+                )
             ),
 
             "drawdown": _safe_float(
-                state.get("drawdown")
+                state.get(
+                    "drawdown"
+                )
+            ),
+
+            "return_12m": _safe_float(
+                state.get(
+                    "return_12m"
+                )
             ),
 
             "cape": _safe_float(
-                state.get("cape")
+                state.get(
+                    "cape"
+                )
             ),
 
-            "cape_percentile": _safe_float(
-                state.get("cape_percentile")
+            "cape_percentile": (
+                _safe_float(
+                    state.get(
+                        "cape_percentile"
+                    )
+                )
+            ),
+
+            "bull_start_date": state.get(
+                "bull_start_date"
+            ),
+
+            "bull_start_price": (
+                _safe_float(
+                    state.get(
+                        "bull_start_price"
+                    )
+                )
+            ),
+
+            "bull_age_years": (
+                _safe_float(
+                    state.get(
+                        "bull_age_years"
+                    )
+                )
+            ),
+
+            "bull_return": _safe_float(
+                state.get(
+                    "bull_return"
+                )
+            ),
+
+            "fed_funds": _safe_float(
+                state.get(
+                    "fed_funds"
+                )
+            ),
+
+            "fed_change_12m": (
+                _safe_float(
+                    state.get(
+                        "fed_change_12m"
+                    )
+                )
+            ),
+
+            "yield_curve_10y_2y": (
+                _safe_float(
+                    state.get(
+                        "yield_curve_10y_2y"
+                    )
+                )
+            ),
+
+            "inflation_yoy": (
+                _safe_float(
+                    state.get(
+                        "inflation_yoy"
+                    )
+                )
+            ),
+
+            "inflation_change_6m": (
+                _safe_float(
+                    state.get(
+                        "inflation_change_6m"
+                    )
+                )
+            ),
+
+            "unemployment": _safe_float(
+                state.get(
+                    "unemployment"
+                )
+            ),
+
+            "sahm_indicator": (
+                _safe_float(
+                    state.get(
+                        "sahm_indicator"
+                    )
+                )
+            ),
+
+            "industrial_production_yoy": (
+                _safe_float(
+                    state.get(
+                        "industrial_production_yoy"
+                    )
+                )
             ),
 
             "valuation_regime": state.get(
                 "valuation_regime"
             ),
 
-            "market_regime": state.get(
-                "market_regime"
-            ),
-
-            "cycle_phase": state.get(
-                "cycle_phase"
-            ),
-
-            "structural_risk": state.get(
-                "structural_risk"
-            ),
-
-            "top_timing": state.get(
-                "top_timing"
-            ),
-
-            "operational_regime": state.get(
-                "operational_regime"
-            ),
-
             "momentum_regime": state.get(
                 "momentum_regime"
+            ),
+
+            "drawdown_regime": state.get(
+                "drawdown_regime"
             ),
 
             "labor_regime": state.get(
@@ -207,8 +455,48 @@ def build_sp500_agent_output(state):
 
             "curve_regime": state.get(
                 "curve_regime"
-            )
+            ),
+
+            "market_regime": state.get(
+                "market_regime"
+            ),
+
+            "cycle_phase": state.get(
+                "cycle_phase"
+            ),
+
+            "structural_risk": state.get(
+                "structural_risk"
+            ),
+
+            "top_timing": state.get(
+                "top_timing"
+            ),
+
+            "macro_deterioration_count": (
+                _safe_float(
+                    state.get(
+                        "macro_deterioration_count"
+                    )
+                )
+            ),
+
+            "market_deterioration_count": (
+                _safe_float(
+                    state.get(
+                        "market_deterioration_count"
+                    )
+                )
+            ),
+
+            "operational_regime": (
+                operational_regime
+            ),
         },
+
+        # ====================================================
+        # RISCO
+        # ====================================================
 
         "risk": {
 
@@ -216,64 +504,118 @@ def build_sp500_agent_output(state):
                 "structural_risk"
             ),
 
-            "score": _safe_float(
-                state.get("risk_score")
-            ),
+            "score": None,
 
-            "alerts": []
+            "alerts": warnings,
         },
+
+        # ====================================================
+        # QUALIDADE DOS DADOS
+        # ====================================================
 
         "data_quality": {
 
-            "score": _safe_float(
-                state.get("data_quality_score")
+            "score": (
+                audit_data_quality_score
             ),
 
-            "missing_fields": missing_fields,
+            "missing_fields": (
+                missing_fields
+            ),
 
-            "warnings": warnings
+            "warnings": warnings,
         },
+
+        # ====================================================
+        # POSIÇÕES / OPORTUNIDADES
+        # ====================================================
 
         "positions": [],
 
         "opportunities": [],
 
+        # ====================================================
+        # AUDITORIA
+        # ====================================================
+
         "audit": {
 
-            "status": state.get(
-                "audit_status"
+            "status": (
+                audit_status
             ),
 
             "engine_consistency_score": (
-                _safe_float(
-                    state.get(
-                        "engine_consistency_score"
-                    )
-                )
+                engine_consistency_score
             ),
 
             "data_quality_score": (
-                _safe_float(
-                    state.get(
-                        "data_quality_score"
-                    )
+                audit_data_quality_score
+            ),
+
+            "ai_dissent": (
+                ai_dissent
+            ),
+
+            "regime_audit": ai_audit.get(
+                "regime_audit"
+            ),
+
+            "data_integrity": ai_audit.get(
+                "data_integrity"
+            ),
+
+            "rule_consistency": ai_audit.get(
+                "rule_consistency"
+            ),
+
+            "policy_consistency": ai_audit.get(
+                "policy_consistency"
+            ),
+
+            "reserve_consistency": ai_audit.get(
+                "reserve_consistency"
+            ),
+
+            "cross_evidence": ai_audit.get(
+                "cross_evidence"
+            ),
+
+            "strengths": ai_audit.get(
+                "strengths"
+            ),
+
+            "manual_review_points": (
+                ai_audit.get(
+                    "manual_review_points"
                 )
             ),
 
-            "ai_dissent": state.get(
-                "ai_dissent"
-            )
+            "final_opinion": ai_audit.get(
+                "final_opinion"
+            ),
         },
+
+        # ====================================================
+        # METADADOS
+        # ====================================================
 
         "metadata": {
 
-            "source": "SP500_CYCLE_ATLAS",
+            "source": SYSTEM_NAME,
+
+            "source_export_version": (
+                payload.get(
+                    "export_version"
+                )
+            ),
 
             "adapter": (
                 "sp500_cycle_adapter"
             ),
 
-            "adapter_version": "1.0",
+            "adapter_version": (
+                ADAPTER_VERSION
+            ),
 
             "reserve_stage": state.get(
                 "reserve_stage"
@@ -309,8 +651,8 @@ def build_sp500_agent_output(state):
                 state.get(
                     "reserve_blocked_by_regime"
                 )
-            )
-        }
+            ),
+        },
     }
 
     return output
