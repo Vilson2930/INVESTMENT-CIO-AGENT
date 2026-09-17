@@ -1,0 +1,312 @@
+name: Collect SP500 Cycle Atlas
+
+on:
+  workflow_dispatch:
+
+jobs:
+  collect-sp500:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ======================================================
+      # 1. CHECKOUT DO INVESTMENT CIO AGENT
+      # ======================================================
+
+      - name: Checkout Investment CIO Agent
+        uses: actions/checkout@v4
+
+
+      # ======================================================
+      # 2. CONFIGURAR PYTHON
+      # ======================================================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+
+      # ======================================================
+      # 3. INSTALAR DEPENDÊNCIAS
+      # ======================================================
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+
+      # ======================================================
+      # 4. LOCALIZAR O ARTIFACT MAIS RECENTE DO ATLAS
+      # ======================================================
+
+      - name: Find latest SP500 Cycle Atlas artifact
+        id: find_artifact
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "=============================================="
+          echo "BUSCANDO ARTIFACT DO SP500 CYCLE ATLAS"
+          echo "=============================================="
+
+          RESPONSE=$(curl --fail-with-body -sS \
+            -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/Vilson2930/SP500_CYCLE_ATLAS/actions/artifacts?name=sp500-cycle-atlas-agent-output&per_page=100")
+
+          ARTIFACT_ID=$(echo "${RESPONSE}" | python -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          artifacts = [
+              artifact
+              for artifact in data.get("artifacts", [])
+              if artifact.get("name") == "sp500-cycle-atlas-agent-output"
+              and not artifact.get("expired", False)
+          ]
+
+          if not artifacts:
+              raise SystemExit(
+                  "Nenhum artifact válido foi encontrado."
+              )
+
+          artifacts.sort(
+              key=lambda artifact: artifact.get("created_at", ""),
+              reverse=True,
+          )
+
+          print(artifacts[0]["id"])
+          ')
+
+          if [ -z "${ARTIFACT_ID}" ]; then
+            echo "ERRO: artifact não encontrado."
+            exit 1
+          fi
+
+          echo "Artifact encontrado."
+          echo "Artifact ID: ${ARTIFACT_ID}"
+
+          echo "artifact_id=${ARTIFACT_ID}" >> "${GITHUB_OUTPUT}"
+
+
+      # ======================================================
+      # 5. BAIXAR O ARTIFACT
+      # ======================================================
+
+      - name: Download SP500 Cycle Atlas artifact
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+          ARTIFACT_ID: ${{ steps.find_artifact.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p incoming/sp500_cycle
+
+          echo "=============================================="
+          echo "BAIXANDO ARTIFACT"
+          echo "=============================================="
+
+          curl --fail-with-body -sS \
+            -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/Vilson2930/SP500_CYCLE_ATLAS/actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o incoming/sp500_cycle/artifact.zip
+
+          echo "Download concluído."
+
+
+      # ======================================================
+      # 6. EXTRAIR O ARTIFACT
+      # ======================================================
+
+      - name: Extract SP500 Cycle Atlas artifact
+        run: |
+          set -euo pipefail
+
+          echo "=============================================="
+          echo "EXTRAINDO ARTIFACT"
+          echo "=============================================="
+
+          unzip -o \
+            incoming/sp500_cycle/artifact.zip \
+            -d incoming/sp500_cycle/extracted
+
+          echo
+          echo "Arquivos extraídos:"
+          find incoming/sp500_cycle/extracted -type f -print
+
+
+      # ======================================================
+      # 7. LOCALIZAR O JSON REAL
+      # ======================================================
+
+      - name: Locate agent_output_raw.json
+        run: |
+          set -euo pipefail
+
+          RAW_FILE=$(find \
+            incoming/sp500_cycle/extracted \
+            -type f \
+            -name "agent_output_raw.json" \
+            -print \
+            -quit)
+
+          if [ -z "${RAW_FILE}" ]; then
+            echo "ERRO: agent_output_raw.json não encontrado."
+            exit 1
+          fi
+
+          mkdir -p incoming/sp500_cycle/ready
+
+          cp \
+            "${RAW_FILE}" \
+            incoming/sp500_cycle/ready/agent_output_raw.json
+
+          echo "JSON real localizado:"
+          echo "${RAW_FILE}"
+
+
+      # ======================================================
+      # 8. PROCESSAR PELO COLLECTOR CENTRAL
+      # ======================================================
+
+      - name: Process real Atlas output with Collector
+        run: |
+          set -euo pipefail
+
+          mkdir -p outputs
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.collector import collect_file
+
+          raw_file = Path(
+              "incoming/sp500_cycle/ready/"
+              "agent_output_raw.json"
+          )
+
+          output_file = Path(
+              "outputs/sp500_cycle_agent_output.json"
+          )
+
+          print("=" * 70)
+          print("INVESTMENT CIO AGENT")
+          print("COLETA REAL — SP500 CYCLE ATLAS")
+          print("=" * 70)
+
+          output = collect_file(raw_file)
+
+          with open(
+              output_file,
+              "w",
+              encoding="utf-8",
+          ) as file:
+              json.dump(
+                  output,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+              )
+
+          print()
+          print("Sistema:")
+          print(output["system_name"])
+
+          print()
+          print("Status:")
+          print(output["status"])
+
+          print()
+          print("Sinal:")
+          print(output["decision"]["signal"])
+
+          print()
+          print("Regime operacional:")
+          print(
+              output["decision"].get(
+                  "operational_regime"
+              )
+          )
+
+          print()
+          print("Confiança:")
+          print(
+              output["decision"].get(
+                  "confidence"
+              )
+          )
+
+          print()
+          print("Output universal criado:")
+          print(output_file)
+
+          print()
+          print("=" * 70)
+          print("COLETA REAL CONCLUÍDA COM SUCESSO")
+          print("=" * 70)
+          PY
+
+
+      # ======================================================
+      # 9. VERIFICAR OUTPUT FINAL
+      # ======================================================
+
+      - name: Validate generated CIO output
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          from agents.validator import validate_agent_output_file
+
+          file_path = (
+              "outputs/"
+              "sp500_cycle_agent_output.json"
+          )
+
+          result = validate_agent_output_file(
+              file_path
+          )
+
+          if not result["valid"]:
+              print(
+                  "ERRO: output universal inválido."
+              )
+
+              for error in result["errors"]:
+                  print(
+                      f"- {error['path']}: "
+                      f"{error['message']}"
+                  )
+
+              raise SystemExit(1)
+
+          print(
+              "Output universal validado "
+              "com sucesso."
+          )
+          PY
+
+
+      # ======================================================
+      # 10. PUBLICAR RESULTADO DO CIO
+      # ======================================================
+
+      - name: Upload Investment CIO output
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment-cio-sp500-output
+          path: outputs/sp500_cycle_agent_output.json
+          if-no-files-found: error
+          retention-days: 30
