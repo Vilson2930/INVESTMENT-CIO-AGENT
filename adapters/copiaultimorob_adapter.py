@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 SYSTEM_ID = "global_portfolio"
 SYSTEM_NAME = "COPIAULTIMOROB"
 SOURCE_SYSTEM = "COPIAULTIMOROB"
-ADAPTER_VERSION = "1.0"
+ADAPTER_VERSION = "1.1"
 
 
 def _to_float(value, default=None):
@@ -152,6 +152,7 @@ def _extract_warnings(payload):
     forced_selling = _first_value(
         stress.get("forced_selling_any"),
         stress.get("forced_selling"),
+        payload.get("forced_selling_any"),
         payload.get("forced_selling"),
     )
 
@@ -272,9 +273,17 @@ def _determine_status(payload, warnings):
         payload.get("final_verdict"),
     )
 
+    survival = _get_section(
+        payload,
+        "survival",
+        "survival_audit",
+        "risk",
+    )
+
     kill_switch = _first_value(
-        payload.get("kill_switch"),
+        survival.get("survival_kill_switch"),
         payload.get("survival_kill_switch"),
+        payload.get("kill_switch"),
     )
 
     if _to_bool(kill_switch, False):
@@ -472,6 +481,13 @@ def build_copiaultimorob_agent_output(payload):
         payload.get("stress_score"),
     )
 
+    forced_selling_value = _first_value(
+        stress.get("forced_selling_any"),
+        stress.get("forced_selling"),
+        payload.get("forced_selling_any"),
+        payload.get("forced_selling"),
+    )
+
     risk_budget_level = _first_value(
         risk_budget.get("risk_budget_level"),
         payload.get("risk_budget_level"),
@@ -535,18 +551,21 @@ def build_copiaultimorob_agent_output(payload):
         "metrics": {
             "macro_regime": regime,
             "macro_signal": operational_signal,
+
             "macro_conviction": _to_float(
                 _first_value(
                     macro.get("macro_conviction"),
                     payload.get("macro_conviction"),
                 )
             ),
+
             "macro_momentum": _to_float(
                 _first_value(
                     macro.get("macro_momentum"),
                     payload.get("macro_momentum"),
                 )
             ),
+
             "confidence_score_raw": _to_float(
                 confidence_raw
             ),
@@ -615,11 +634,13 @@ def build_copiaultimorob_agent_output(payload):
 
             "survival_status": survival_status,
             "ruin_risk": ruin_risk,
+
             "survival_kill_switch": _to_bool(
                 survival_kill_switch
             ),
 
             "stress_level": stress_level,
+
             "stress_score": _to_float(
                 stress_score
             ),
@@ -631,12 +652,14 @@ def build_copiaultimorob_agent_output(payload):
                 )
             ),
 
+            # Compatibilidade com a versão anterior
             "forced_selling": _to_bool(
-                _first_value(
-                    stress.get("forced_selling_any"),
-                    stress.get("forced_selling"),
-                    payload.get("forced_selling"),
-                )
+                forced_selling_value
+            ),
+
+            # Campo canônico esperado pelos testes/CIO Agent
+            "forced_selling_any": _to_bool(
+                forced_selling_value
             ),
 
             "risk_budget_level": risk_budget_level,
@@ -707,9 +730,11 @@ def build_copiaultimorob_agent_output(payload):
                 if risk_level is not None
                 else None
             ),
+
             "score": _to_float(
                 risk_budget_score
             ),
+
             "alerts": warnings,
         },
 
@@ -717,6 +742,7 @@ def build_copiaultimorob_agent_output(payload):
             "score": _to_float(
                 data_quality_score
             ),
+
             "missing_fields": [],
             "warnings": warnings,
         },
@@ -806,15 +832,18 @@ def build_copiaultimorob_agent_output(payload):
 
         "metadata": {
             "source_system": SOURCE_SYSTEM,
+
             "source_export_version": payload.get(
                 "export_version"
             ),
+
             "adapter_version": ADAPTER_VERSION,
 
             "macro_regime": regime,
             "operational_signal": operational_signal,
 
             "survival_status": survival_status,
+
             "survival_kill_switch": _to_bool(
                 survival_kill_switch
             ),
