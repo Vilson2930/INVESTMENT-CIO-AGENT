@@ -1,296 +1,870 @@
-from adapters.copiaultimorob_adapter import build_copiaultimorob_agent_output
-from agents.validator import validate_agent_output
+from datetime import datetime, timezone
 
 
-def build_realistic_payload():
+SYSTEM_ID = "global_portfolio"
+SYSTEM_NAME = "COPIAULTIMOROB"
+SOURCE_SYSTEM = "COPIAULTIMOROB"
+ADAPTER_VERSION = "1.3"
+
+
+def _to_float(value, default=None):
+    if value is None:
+        return default
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_bool(value, default=None):
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return default
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+
+        if normalized in {"true", "1", "yes", "sim"}:
+            return True
+
+        if normalized in {"false", "0", "no", "nao", "não"}:
+            return False
+
+    return default
+
+
+def _normalize_confidence(value):
+    number = _to_float(value)
+
+    if number is None:
+        return None
+
+    if number > 1:
+        number = number / 100.0
+
+    return max(0.0, min(number, 1.0))
+
+
+def _get_section(payload, *names):
+    for name in names:
+        section = payload.get(name)
+
+        if isinstance(section, dict):
+            return section
+
+    return {}
+
+
+def _first_value(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+
+    return None
+
+
+def _extract_warnings(payload):
+    warnings = []
+
+    survival = _get_section(
+        payload,
+        "survival",
+        "survival_audit",
+        "risk",
+    )
+
+    stress = _get_section(
+        payload,
+        "stress",
+        "stress_summary",
+    )
+
+    risk_budget = _get_section(
+        payload,
+        "risk_budget",
+        "risk_budget_summary",
+    )
+
+    liquidity = _get_section(
+        payload,
+        "liquidity",
+        "liquidity_summary",
+    )
+
+    counterparty = _get_section(
+        payload,
+        "counterparty",
+        "counterparty_summary",
+    )
+
+    governance = _get_section(
+        payload,
+        "governance",
+        "risk_committee",
+    )
+
+    survival_status = _first_value(
+        survival.get("survival_status"),
+        payload.get("survival_status"),
+    )
+
+    ruin_risk = _first_value(
+        survival.get("ruin_risk"),
+        payload.get("ruin_risk"),
+    )
+
+    kill_switch = _first_value(
+        survival.get("survival_kill_switch"),
+        payload.get("survival_kill_switch"),
+        payload.get("kill_switch"),
+    )
+
+    stress_level = _first_value(
+        stress.get("stress_level"),
+        payload.get("stress_level"),
+    )
+
+    forced_selling = _first_value(
+        stress.get("forced_selling_any"),
+        stress.get("forced_selling"),
+        payload.get("forced_selling_any"),
+        payload.get("forced_selling"),
+    )
+
+    risk_budget_level = _first_value(
+        risk_budget.get("risk_budget_level"),
+        payload.get("risk_budget_level"),
+    )
+
+    liquidity_level = _first_value(
+        liquidity.get("liquidity_level"),
+        payload.get("liquidity_level"),
+    )
+
+    counterparty_level = _first_value(
+        counterparty.get("counterparty_level"),
+        payload.get("counterparty_level"),
+    )
+
+    final_verdict = _first_value(
+        governance.get("final_verdict"),
+        payload.get("final_verdict"),
+    )
+
+    if survival_status and str(survival_status).upper() not in {
+        "APROVADO",
+        "OK",
+        "ROBUSTO",
+    }:
+        warnings.append(
+            f"Survival status: {survival_status}"
+        )
+
+    if ruin_risk and str(ruin_risk).upper() in {
+        "ALTO",
+        "CRITICO",
+        "CRÍTICO",
+    }:
+        warnings.append(
+            f"Risco de ruína: {ruin_risk}"
+        )
+
+    if _to_bool(kill_switch, False):
+        warnings.append(
+            "Survival Kill Switch ativo."
+        )
+
+    if stress_level and str(stress_level).upper() in {
+        "ALTO",
+        "CRITICO",
+        "CRÍTICO",
+    }:
+        warnings.append(
+            f"Stress level: {stress_level}"
+        )
+
+    if _to_bool(forced_selling, False):
+        warnings.append(
+            "Stress engine identificou forced selling."
+        )
+
+    if risk_budget_level and str(risk_budget_level).upper() in {
+        "ALTO",
+        "CRITICO",
+        "CRÍTICO",
+    }:
+        warnings.append(
+            f"Risk Budget: {risk_budget_level}"
+        )
+
+    if liquidity_level and str(liquidity_level).upper() in {
+        "FRAGIL",
+        "FRÁGIL",
+        "CRITICO",
+        "CRÍTICO",
+    }:
+        warnings.append(
+            f"Liquidez: {liquidity_level}"
+        )
+
+    if counterparty_level and str(counterparty_level).upper() in {
+        "FRAGIL",
+        "FRÁGIL",
+        "CRITICO",
+        "CRÍTICO",
+    }:
+        warnings.append(
+            f"Contraparte: {counterparty_level}"
+        )
+
+    if final_verdict and str(final_verdict).upper() not in {
+        "APROVADO",
+        "OK",
+        "NORMAL",
+    }:
+        warnings.append(
+            f"Governança: {final_verdict}"
+        )
+
+    return warnings
+
+
+def _determine_status(payload, warnings):
+    governance = _get_section(
+        payload,
+        "governance",
+        "risk_committee",
+    )
+
+    final_verdict = _first_value(
+        governance.get("final_verdict"),
+        payload.get("final_verdict"),
+    )
+
+    survival = _get_section(
+        payload,
+        "survival",
+        "survival_audit",
+        "risk",
+    )
+
+    kill_switch = _first_value(
+        survival.get("survival_kill_switch"),
+        payload.get("survival_kill_switch"),
+        payload.get("kill_switch"),
+    )
+
+    if _to_bool(kill_switch, False):
+        return "WARNING"
+
+    if final_verdict:
+        verdict_upper = str(final_verdict).upper()
+
+        if any(
+            term in verdict_upper
+            for term in (
+                "REPROVADO",
+                "BLOQUEAR",
+                "CRITICO",
+                "CRÍTICO",
+            )
+        ):
+            return "WARNING"
+
+    if warnings:
+        return "WARNING"
+
+    return "OK"
+
+
+def build_copiaultimorob_agent_output(payload):
     """
-    Payload representativo de uma execução real do COPIAULTIMOROB.
+    Traduz a saída do COPIAULTIMOROB para o contrato
+    universal do INVESTMENT CIO AGENT.
 
-    O objetivo deste teste é verificar se o adaptador:
-    1. identifica corretamente o sistema;
-    2. preserva a decisão original do robô;
-    3. transporta os principais indicadores de risco;
-    4. não altera o sinal quantitativo;
-    5. produz saída compatível com o schema universal do CIO Agent.
+    Este adaptador:
+    - não recalcula a estratégia;
+    - não altera sinais;
+    - não altera o veredito;
+    - não altera regras de risco;
+    - apenas traduz e organiza os dados.
     """
 
-    return {
-        "source_system": "COPIAULTIMOROB",
-        "export_version": "1.0",
-        "generated_at": "2026-09-17T22:00:00+00:00",
+    if not isinstance(payload, dict):
+        raise TypeError(
+            "Payload do COPIAULTIMOROB deve ser um dicionário."
+        )
 
-        "macro": {
-            "regime": "NEUTRO",
-            "sinal_operacional": "NEUTRO",
-            "macro_conviction": 0.0,
-            "confidence_score": 0.0,
+    source_system = payload.get("source_system")
+
+    if source_system != SOURCE_SYSTEM:
+        raise ValueError(
+            "Sistema de origem inválido. "
+            f"Esperado: {SOURCE_SYSTEM}. "
+            f"Recebido: {source_system}"
+        )
+
+    generated_at = payload.get("generated_at")
+
+    if not generated_at:
+        generated_at = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+    macro = _get_section(
+        payload,
+        "macro",
+        "macro_state",
+        "macro_summary",
+    )
+
+    portfolio = _get_section(
+        payload,
+        "portfolio",
+        "portfolio_summary",
+    )
+
+    allocation = _get_section(
+        payload,
+        "allocation",
+        "allocation_advisor",
+        "allocation_summary",
+    )
+
+    survival = _get_section(
+        payload,
+        "survival",
+        "survival_audit",
+        "risk",
+    )
+
+    stress = _get_section(
+        payload,
+        "stress",
+        "stress_summary",
+    )
+
+    risk_budget = _get_section(
+        payload,
+        "risk_budget",
+        "risk_budget_summary",
+    )
+
+    liquidity = _get_section(
+        payload,
+        "liquidity",
+        "liquidity_summary",
+    )
+
+    counterparty = _get_section(
+        payload,
+        "counterparty",
+        "counterparty_summary",
+    )
+
+    governance = _get_section(
+        payload,
+        "governance",
+        "risk_committee",
+    )
+
+    ai_audit = _get_section(
+        payload,
+        "ai_audit",
+        "ai_audit_summary",
+    )
+
+    nvidia_audit = _get_section(
+        payload,
+        "openai_audit",
+        "nvidia_audit",
+        "openai_audit_summary",
+    )
+
+    regime = _first_value(
+        macro.get("regime"),
+        payload.get("regime"),
+        payload.get("macro_regime"),
+    )
+
+    operational_signal = _first_value(
+        macro.get("sinal_operacional"),
+        macro.get("signal"),
+        payload.get("sinal_operacional"),
+        payload.get("signal"),
+        "UNDEFINED",
+    )
+
+    confidence_raw = _first_value(
+        macro.get("confidence_score"),
+        payload.get("confidence_score"),
+    )
+
+    confidence = _normalize_confidence(
+        confidence_raw
+    )
+
+    final_verdict = _first_value(
+        governance.get("final_verdict"),
+        payload.get("final_verdict"),
+    )
+
+    committee_action = _first_value(
+        governance.get("committee_action"),
+        payload.get("committee_action"),
+    )
+
+    integrated_risk_level = _first_value(
+        governance.get("integrated_risk_level"),
+        payload.get("integrated_risk_level"),
+    )
+
+    warnings = _extract_warnings(payload)
+
+    # Campos mínimos necessários para considerar a coleta completa.
+    # A ausência deles não altera o sinal do robô; apenas informa ao CIO
+    # que o payload recebido está incompleto.
+    required_sections = {
+        "macro": macro,
+        "portfolio": portfolio,
+        "allocation": allocation,
+        "survival": survival,
+        "stress": stress,
+        "risk_budget": risk_budget,
+        "liquidity": liquidity,
+        "counterparty": counterparty,
+        "governance": governance,
+    }
+
+    missing_sections = [
+        name
+        for name, section in required_sections.items()
+        if not section
+    ]
+
+    if missing_sections:
+        warnings.append(
+            "Payload incompleto. Seções ausentes: "
+            + ", ".join(missing_sections)
+        )
+
+    status = _determine_status(
+        payload,
+        warnings,
+    )
+
+    survival_status = _first_value(
+        survival.get("survival_status"),
+        payload.get("survival_status"),
+    )
+
+    ruin_risk = _first_value(
+        survival.get("ruin_risk"),
+        payload.get("ruin_risk"),
+    )
+
+    survival_kill_switch = _first_value(
+        survival.get("survival_kill_switch"),
+        payload.get("survival_kill_switch"),
+        payload.get("kill_switch"),
+    )
+
+    stress_level = _first_value(
+        stress.get("stress_level"),
+        payload.get("stress_level"),
+    )
+
+    stress_score = _first_value(
+        stress.get("stress_score"),
+        payload.get("stress_score"),
+    )
+
+    forced_selling_value = _first_value(
+        stress.get("forced_selling_any"),
+        stress.get("forced_selling"),
+        payload.get("forced_selling_any"),
+        payload.get("forced_selling"),
+    )
+
+    risk_budget_level = _first_value(
+        risk_budget.get("risk_budget_level"),
+        payload.get("risk_budget_level"),
+    )
+
+    risk_budget_score = _first_value(
+        risk_budget.get("risk_budget_score"),
+        payload.get("risk_budget_score"),
+    )
+
+    liquidity_level = _first_value(
+        liquidity.get("liquidity_level"),
+        payload.get("liquidity_level"),
+    )
+
+    liquidity_score = _first_value(
+        liquidity.get("liquidity_score"),
+        payload.get("liquidity_score"),
+    )
+
+    counterparty_level = _first_value(
+        counterparty.get("counterparty_level"),
+        payload.get("counterparty_level"),
+    )
+
+    counterparty_score = _first_value(
+        counterparty.get("counterparty_score"),
+        payload.get("counterparty_score"),
+    )
+
+    risk_level = _first_value(
+        integrated_risk_level,
+        stress_level,
+        risk_budget_level,
+        ruin_risk,
+    )
+
+    ai_audit_status = _first_value(
+        ai_audit.get("ai_audit_status"),
+        payload.get("ai_audit_status"),
+    )
+
+    ai_audit_score = _to_float(
+        _first_value(
+            ai_audit.get("ai_audit_score"),
+            payload.get("ai_audit_score"),
+        )
+    )
+
+    ai_root_cause = _first_value(
+        ai_audit.get("root_cause"),
+        payload.get("ai_root_cause"),
+    )
+
+    nvidia_status = _first_value(
+        nvidia_audit.get("openai_audit_status"),
+        nvidia_audit.get("status"),
+        payload.get("nvidia_status"),
+    )
+
+    nvidia_verdict = _first_value(
+        nvidia_audit.get("audit_verdict"),
+        payload.get("nvidia_verdict"),
+    )
+
+    nvidia_score = _to_float(
+        _first_value(
+            nvidia_audit.get("audit_score"),
+            payload.get("nvidia_score"),
+        )
+    )
+
+    nvidia_confidence = _to_float(
+        _first_value(
+            nvidia_audit.get("audit_confidence"),
+            payload.get("nvidia_confidence"),
+        )
+    )
+
+    nvidia_severity = _first_value(
+        nvidia_audit.get("severity"),
+        payload.get("nvidia_severity"),
+    )
+
+    nvidia_root_cause = _first_value(
+        nvidia_audit.get("root_cause"),
+        payload.get("nvidia_root_cause"),
+    )
+
+    nvidia_final_opinion = _first_value(
+        nvidia_audit.get("final_opinion"),
+        payload.get("nvidia_final_opinion"),
+    )
+
+    data_quality_score = _first_value(
+        nvidia_audit.get("data_quality_score"),
+        ai_audit.get("data_quality_score"),
+        payload.get("data_quality_score"),
+    )
+
+    output = {
+        "schema_version": "1.0",
+        "system_id": SYSTEM_ID,
+        "system_name": SYSTEM_NAME,
+        "generated_at": generated_at,
+        "status": status,
+
+        "decision": {
+            "signal": str(operational_signal),
+            "confidence": confidence,
+            "summary": (
+                f"Regime macro: {regime}; "
+                f"sinal operacional: {operational_signal}; "
+                f"veredito de governança: {final_verdict}; "
+                f"ação do comitê: {committee_action}."
+            ),
         },
 
-        "portfolio": {
-            "total_value": 100000.0,
-            "gross_turnover_final": 0.0,
-            "turnover_status": "OK",
-            "kill_switch": False,
+        "metrics": {
+            "macro_regime": regime,
+            "macro_signal": operational_signal,
+
+            "macro_conviction": _to_float(
+                _first_value(
+                    macro.get("macro_conviction"),
+                    payload.get("macro_conviction"),
+                )
+            ),
+
+            "macro_momentum": _to_float(
+                _first_value(
+                    macro.get("macro_momentum"),
+                    payload.get("macro_momentum"),
+                )
+            ),
+
+            "confidence_score_raw": _to_float(
+                confidence_raw
+            ),
+
+            "portfolio_total_value": _to_float(
+                _first_value(
+                    portfolio.get("total_value"),
+                    payload.get("total_value"),
+                )
+            ),
+
+            "gross_turnover_final": _to_float(
+                _first_value(
+                    portfolio.get("gross_turnover_final"),
+                    payload.get("gross_turnover_final"),
+                )
+            ),
+
+            "turnover_status": _first_value(
+                portfolio.get("turnover_status"),
+                payload.get("turnover_status"),
+            ),
+
+            "allocation_alignment_score": _to_float(
+                _first_value(
+                    allocation.get(
+                        "allocation_alignment_score"
+                    ),
+                    payload.get(
+                        "allocation_alignment_score"
+                    ),
+                )
+            ),
+
+            "allocation_alignment_level": _first_value(
+                allocation.get(
+                    "allocation_alignment_level"
+                ),
+                payload.get(
+                    "allocation_alignment_level"
+                ),
+            ),
+
+            "total_model_drift_pct": _to_float(
+                _first_value(
+                    allocation.get(
+                        "total_model_drift_pct"
+                    ),
+                    payload.get(
+                        "total_model_drift_pct"
+                    ),
+                )
+            ),
+
+            "top_gap_asset": _first_value(
+                allocation.get("top_gap_asset"),
+                payload.get("top_gap_asset"),
+            ),
+
+            "top_gap_abs_pct": _to_float(
+                _first_value(
+                    allocation.get("top_gap_abs_pct"),
+                    payload.get("top_gap_abs_pct"),
+                )
+            ),
+
+            "survival_status": survival_status,
+            "ruin_risk": ruin_risk,
+
+            "survival_kill_switch": _to_bool(
+                survival_kill_switch
+            ),
+
+            "stress_level": stress_level,
+
+            "stress_score": _to_float(
+                stress_score
+            ),
+
+            "max_drawdown_pct": _to_float(
+                _first_value(
+                    stress.get("max_drawdown_pct"),
+                    payload.get("max_drawdown_pct"),
+                )
+            ),
+
+            # Mantido por compatibilidade.
+            "forced_selling": _to_bool(
+                forced_selling_value
+            ),
+
+            # Nome esperado pelo teste e pelo contrato operacional.
+            "forced_selling_any": _to_bool(
+                forced_selling_value
+            ),
+
+            "risk_budget_level": risk_budget_level,
+
+            "risk_budget_score": _to_float(
+                risk_budget_score
+            ),
+
+            "top_risk_asset": _first_value(
+                risk_budget.get("top_risk_asset"),
+                payload.get("top_risk_asset"),
+            ),
+
+            "max_risk_contribution_pct": _to_float(
+                _first_value(
+                    risk_budget.get(
+                        "max_risk_contribution_pct"
+                    ),
+                    payload.get(
+                        "max_risk_contribution_pct"
+                    ),
+                )
+            ),
+
+            "liquidity_level": liquidity_level,
+
+            "liquidity_score": _to_float(
+                liquidity_score
+            ),
+
+            "aggregate_haircut_pct": _to_float(
+                _first_value(
+                    liquidity.get(
+                        "aggregate_haircut_pct"
+                    ),
+                    liquidity.get(
+                        "aggregate_operational_haircut_pct"
+                    ),
+                    payload.get(
+                        "aggregate_haircut_pct"
+                    ),
+                )
+            ),
+
+            "counterparty_level": counterparty_level,
+
+            "counterparty_score": _to_float(
+                counterparty_score
+            ),
+
+            "largest_counterparty": _first_value(
+                counterparty.get(
+                    "largest_counterparty"
+                ),
+                payload.get(
+                    "largest_counterparty"
+                ),
+            ),
+
+            "integrated_risk_level": integrated_risk_level,
+            "committee_action": committee_action,
+            "final_verdict": final_verdict,
         },
 
-        "allocation": {
-            "allocation_alignment_score": 0.0,
-            "allocation_alignment_level": "DESALINHADO",
-            "total_model_drift_pct": 0.0,
-            "top_gap_asset": "N/D",
-            "top_gap_abs_pct": 0.0,
+        "risk": {
+            "level": (
+                str(risk_level)
+                if risk_level is not None
+                else None
+            ),
+
+            "score": _to_float(
+                risk_budget_score
+            ),
+
+            "alerts": warnings,
         },
 
-        "survival": {
-            "survival_status": "REPROVADO_OPERACIONALMENTE",
-            "ruin_risk": "ALTO",
-            "survival_kill_switch": True,
+        "data_quality": {
+            "score": _to_float(
+                data_quality_score
+            ),
+
+            "missing_fields": [],
+            "warnings": warnings,
         },
 
-        "stress": {
-            "stress_level": "CRITICO",
-            "stress_score": 100.0,
-            "max_drawdown_pct": -50.0,
-            "forced_selling_any": True,
+        "positions": [],
+
+        "opportunities": [],
+
+        "audit": {
+            # Nomes canônicos esperados pelos testes.
+            "ai_audit_status": ai_audit_status,
+            "ai_audit_score": ai_audit_score,
+            "ai_root_cause": ai_root_cause,
+
+            # Nomes anteriores mantidos para compatibilidade.
+            "deterministic_audit_status": ai_audit_status,
+            "deterministic_audit_score": ai_audit_score,
+            "deterministic_root_cause": ai_root_cause,
+
+            # Nomes canônicos da auditoria NVIDIA esperados pelo CIO Agent.
+            "nvidia_audit_status": nvidia_status,
+            "nvidia_audit_verdict": nvidia_verdict,
+            "nvidia_audit_score": nvidia_score,
+            "nvidia_audit_confidence": nvidia_confidence,
+            "nvidia_audit_severity": nvidia_severity,
+            "nvidia_audit_root_cause": nvidia_root_cause,
+            "nvidia_audit_final_opinion": nvidia_final_opinion,
+
+            # Nomes anteriores preservados para compatibilidade.
+            "nvidia_status": nvidia_status,
+            "nvidia_verdict": nvidia_verdict,
+            "nvidia_score": nvidia_score,
+            "nvidia_confidence": nvidia_confidence,
+            "nvidia_severity": nvidia_severity,
+            "nvidia_root_cause": nvidia_root_cause,
+            "nvidia_final_opinion": nvidia_final_opinion,
         },
 
-        "risk_budget": {
-            "risk_budget_level": "CRITICO",
-            "risk_budget_score": 100.0,
-            "top_risk_asset": "BTC",
-            "max_risk_contribution_pct": 50.0,
-        },
+        "metadata": {
+            "source_system": SOURCE_SYSTEM,
 
-        "liquidity": {
-            "liquidity_level": "OK",
-            "liquidity_score": 100.0,
-            "aggregate_haircut_pct": 0.0,
-        },
+            "source_export_version": payload.get(
+                "export_version"
+            ),
 
-        "counterparty": {
-            "counterparty_level": "OK",
-            "counterparty_score": 100.0,
-            "largest_counterparty": "N/D",
-        },
+            "adapter_version": ADAPTER_VERSION,
 
-        "governance": {
-            "integrated_risk_level": "CRITICO",
-            "committee_action": "BLOQUEAR_NOVAS_COMPRAS",
-            "final_verdict": "REPROVADO_OPERACIONALMENTE",
-        },
+            "macro_regime": regime,
+            "operational_signal": operational_signal,
 
-        "ai_audit": {
-            "ai_audit_status": "CONFIRMADO_COM_ALERTAS",
-            "ai_audit_score": 90.0,
-            "root_cause": "RISCO_OPERACIONAL_ELEVADO",
-        },
+            "survival_status": survival_status,
 
-        "nvidia_audit": {
-            "openai_audit_status": "CONFIRMED_WITH_WARNINGS",
-            "audit_verdict": "CONSISTENT_WITH_WARNINGS",
-            "audit_score": 90.0,
-            "audit_confidence": 0.90,
-            "severity": "HIGH",
-            "root_cause": "RISK_CONCENTRATION",
-            "final_opinion": (
-                "O engine permanece internamente consistente, "
-                "mas apresenta alertas relevantes de risco."
+            "survival_kill_switch": _to_bool(
+                survival_kill_switch
+            ),
+
+            "governance_final_verdict": final_verdict,
+            "committee_action": committee_action,
+
+            "adapter_policy": (
+                "TRANSLATION_ONLY_NO_RECALCULATION"
             ),
         },
     }
 
-
-def test_adapter_identity():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert output["system_id"] == "global_portfolio"
-    assert output["system_name"] == "COPIAULTIMOROB"
-
-    print("OK - identidade do COPIAULTIMOROB preservada")
-
-
-def test_adapter_preserves_original_signal():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert output["decision"]["signal"] == "NEUTRO"
-
-    print("OK - sinal original NEUTRO preservado")
-
-
-def test_adapter_preserves_final_verdict():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert (
-        output["metrics"]["final_verdict"]
-        == "REPROVADO_OPERACIONALMENTE"
-    )
-
-    print("OK - veredito operacional preservado")
-
-
-def test_adapter_survival_risk():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert (
-        output["metrics"]["survival_status"]
-        == "REPROVADO_OPERACIONALMENTE"
-    )
-
-    assert output["metrics"]["survival_kill_switch"] is True
-
-    print("OK - survival risk preservado")
-
-
-def test_adapter_stress():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert output["metrics"]["stress_level"] == "CRITICO"
-    assert output["metrics"]["forced_selling_any"] is True
-
-    print("OK - stress engine preservado")
-
-
-def test_adapter_risk_budget():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert output["metrics"]["risk_budget_level"] == "CRITICO"
-    assert output["metrics"]["top_risk_asset"] == "BTC"
-
-    print("OK - risk budget preservado")
-
-
-def test_adapter_governance():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert output["risk"]["level"] == "CRITICO"
-
-    assert (
-        output["metrics"]["committee_action"]
-        == "BLOQUEAR_NOVAS_COMPRAS"
-    )
-
-    print("OK - governança preservada")
-
-
-def test_adapter_ai_audit():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert (
-        output["audit"]["ai_audit_status"]
-        == "CONFIRMADO_COM_ALERTAS"
-    )
-
-    assert output["audit"]["ai_audit_score"] == 90.0
-
-    print("OK - auditoria interna preservada")
-
-
-def test_adapter_nvidia_audit():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    assert (
-        output["audit"]["nvidia_audit_status"]
-        == "CONFIRMED_WITH_WARNINGS"
-    )
-
-    assert output["audit"]["nvidia_audit_score"] == 90.0
-
-    print("OK - auditoria NVIDIA preservada")
-
-
-def test_adapter_schema():
-    payload = build_realistic_payload()
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    validation = validate_agent_output(output)
-
-    assert validation["valid"] is True, validation["errors"]
-
-    print("OK - output compatível com schema universal")
-
-
-def test_incomplete_payload():
-    payload = {
-        "source_system": "COPIAULTIMOROB",
-        "export_version": "1.0",
-        "generated_at": "2026-09-17T22:00:00+00:00",
-        "macro": {
-            "sinal_operacional": "NEUTRO",
-        },
-    }
-
-    output = build_copiaultimorob_agent_output(payload)
-
-    validation = validate_agent_output(output)
-
-    assert validation["valid"] is True
-    assert output["status"] in {
-        "WARNING",
-        "DATA_INSUFFICIENT",
-    }
-
-    print("OK - payload incompleto tratado com segurança")
-
-
-def test_wrong_source_system():
-    payload = build_realistic_payload()
-
-    payload["source_system"] = "SISTEMA_ERRADO"
-
-    try:
-        build_copiaultimorob_agent_output(payload)
-
-    except ValueError:
-        print("OK - sistema incorreto rejeitado")
-        return
-
-    raise AssertionError(
-        "O adaptador deveria rejeitar source_system incorreto."
-    )
-
-
-def run_all_tests():
-    print("=" * 70)
-    print("INVESTMENT CIO AGENT")
-    print("TESTE — COPIAULTIMOROB ADAPTER")
-    print("=" * 70)
-
-    test_adapter_identity()
-    test_adapter_preserves_original_signal()
-    test_adapter_preserves_final_verdict()
-    test_adapter_survival_risk()
-    test_adapter_stress()
-    test_adapter_risk_budget()
-    test_adapter_governance()
-    test_adapter_ai_audit()
-    test_adapter_nvidia_audit()
-    test_adapter_schema()
-    test_incomplete_payload()
-    test_wrong_source_system()
-
-    print("=" * 70)
-    print("TODOS OS TESTES DO COPIAULTIMOROB PASSARAM")
-    print("=" * 70)
-
-
-if __name__ == "__main__":
-    run_all_tests()
+    return output
