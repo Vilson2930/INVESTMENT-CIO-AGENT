@@ -6,11 +6,17 @@
 # Teste oficial do Collector Central.
 #
 # Verifica:
-# 1. Identificação do sistema de origem.
-# 2. Seleção automática do adaptador.
-# 3. Conversão para o contrato universal.
-# 4. Validação do output.
-# 5. Proteção contra sistemas desconhecidos.
+# 1. Registro dos sistemas suportados.
+# 2. Identificação do sistema de origem.
+# 3. Seleção automática do adaptador correto.
+# 4. Conversão para o contrato universal.
+# 5. Preservação das decisões dos robôs.
+# 6. Preservação dos principais dados de risco.
+# 7. Proteção contra sistemas desconhecidos.
+#
+# Sistemas atualmente testados:
+# - SP500_CYCLE_ATLAS
+# - COPIAULTIMOROB
 #
 # ============================================================
 
@@ -22,6 +28,10 @@ from agents.collector import (
     UnsupportedSystemError,
 )
 
+
+# ============================================================
+# PAYLOAD — SP500 CYCLE ATLAS
+# ============================================================
 
 def build_atlas_payload():
 
@@ -228,6 +238,169 @@ def build_atlas_payload():
     }
 
 
+# ============================================================
+# PAYLOAD — COPIAULTIMOROB
+# ============================================================
+
+def build_copiaultimorob_payload():
+
+    return {
+
+        "source_system": "COPIAULTIMOROB",
+
+        "export_version": "1.0",
+
+        "generated_at": (
+            "2026-09-17T22:00:00+00:00"
+        ),
+
+        "macro": {
+
+            "regime": "NEUTRO",
+
+            "sinal_operacional": "NEUTRO",
+
+            "macro_conviction": 0.0,
+
+            "confidence_score": 0.0,
+        },
+
+        "portfolio": {
+
+            "total_value": 100000.0,
+
+            "gross_turnover_final": 0.0,
+
+            "turnover_status": "OK",
+
+            "kill_switch": False,
+        },
+
+        "allocation": {
+
+            "allocation_alignment_score": 0.0,
+
+            "allocation_alignment_level": (
+                "DESALINHADO"
+            ),
+
+            "total_model_drift_pct": 0.0,
+
+            "top_gap_asset": "N/D",
+
+            "top_gap_abs_pct": 0.0,
+        },
+
+        "survival": {
+
+            "survival_status": (
+                "REPROVADO_OPERACIONALMENTE"
+            ),
+
+            "ruin_risk": "ALTO",
+
+            "survival_kill_switch": True,
+        },
+
+        "stress": {
+
+            "stress_level": "CRITICO",
+
+            "stress_score": 100.0,
+
+            "max_drawdown_pct": -50.0,
+
+            "forced_selling_any": True,
+        },
+
+        "risk_budget": {
+
+            "risk_budget_level": "CRITICO",
+
+            "risk_budget_score": 100.0,
+
+            "top_risk_asset": "BTC",
+
+            "max_risk_contribution_pct": 50.0,
+        },
+
+        "liquidity": {
+
+            "liquidity_level": "OK",
+
+            "liquidity_score": 100.0,
+
+            "aggregate_haircut_pct": 0.0,
+        },
+
+        "counterparty": {
+
+            "counterparty_level": "OK",
+
+            "counterparty_score": 100.0,
+
+            "largest_counterparty": "N/D",
+        },
+
+        "governance": {
+
+            "integrated_risk_level": "CRITICO",
+
+            "committee_action": (
+                "BLOQUEAR_NOVAS_COMPRAS"
+            ),
+
+            "final_verdict": (
+                "REPROVADO_OPERACIONALMENTE"
+            ),
+        },
+
+        "ai_audit": {
+
+            "ai_audit_status": (
+                "CONFIRMADO_COM_ALERTAS"
+            ),
+
+            "ai_audit_score": 90.0,
+
+            "root_cause": (
+                "RISCO_OPERACIONAL_ELEVADO"
+            ),
+        },
+
+        "nvidia_audit": {
+
+            "openai_audit_status": (
+                "CONFIRMED_WITH_WARNINGS"
+            ),
+
+            "audit_verdict": (
+                "CONSISTENT_WITH_WARNINGS"
+            ),
+
+            "audit_score": 90.0,
+
+            "audit_confidence": 0.90,
+
+            "severity": "HIGH",
+
+            "root_cause": (
+                "RISK_CONCENTRATION"
+            ),
+
+            "final_opinion": (
+                "O engine permanece internamente "
+                "consistente, mas apresenta "
+                "alertas relevantes de risco."
+            ),
+        },
+    }
+
+
+# ============================================================
+# TESTE PRINCIPAL
+# ============================================================
+
 def main():
 
     print("=" * 70)
@@ -235,7 +408,7 @@ def main():
     print("=" * 70)
 
     # ========================================================
-    # 1. REGISTRO DE SISTEMAS
+    # 1. REGISTRO DOS SISTEMAS
     # ========================================================
 
     registered = get_registered_systems()
@@ -245,110 +418,206 @@ def main():
         in registered
     )
 
+    assert (
+        "COPIAULTIMOROB"
+        in registered
+    )
+
     assert is_system_supported(
         "SP500_CYCLE_ATLAS"
     ) is True
 
+    assert is_system_supported(
+        "COPIAULTIMOROB"
+    ) is True
+
     print(
-        "REGISTRO DO SP500 CYCLE ATLAS: OK"
+        "REGISTRO DOS DOIS SISTEMAS: OK"
     )
 
     # ========================================================
-    # 2. PAYLOAD
+    # 2. SP500 — IDENTIFICAÇÃO
     # ========================================================
 
-    payload = build_atlas_payload()
+    atlas_payload = build_atlas_payload()
 
-    source_system = (
-        identify_source_system(
-            payload
-        )
+    atlas_source = identify_source_system(
+        atlas_payload
     )
 
-    assert source_system == (
+    assert atlas_source == (
         "SP500_CYCLE_ATLAS"
     )
 
     print(
-        "IDENTIFICAÇÃO DO SISTEMA: OK"
+        "SP500 — IDENTIFICAÇÃO: OK"
     )
 
     # ========================================================
-    # 3. COLLECTOR
+    # 3. SP500 — COLLECTOR
     # ========================================================
 
-    output = collect_payload(
-        payload
+    atlas_output = collect_payload(
+        atlas_payload
     )
 
-    assert output[
+    assert atlas_output[
         "system_id"
     ] == "sp500_cycle"
 
-    assert output[
+    assert atlas_output[
         "system_name"
     ] == "SP500_CYCLE_ATLAS"
 
-    print(
-        "ENCAMINHAMENTO AO ADAPTADOR: OK"
-    )
-
-    # ========================================================
-    # 4. DECISÃO
-    # ========================================================
-
-    assert output[
+    assert atlas_output[
         "decision"
     ]["signal"] == "HOLD"
 
-    assert output[
+    assert atlas_output[
         "decision"
     ]["operational_regime"] == (
         "YELLOW_EXPENSIVE_BULL"
     )
 
-    assert output[
+    assert atlas_output[
         "decision"
     ]["new_contribution_equity"] == (
         0.60
     )
 
-    assert output[
+    assert atlas_output[
         "decision"
     ]["new_contribution_reserve"] == (
         0.40
     )
 
-    print(
-        "DECISÃO PRESERVADA: OK"
-    )
-
-    # ========================================================
-    # 5. AUDITORIA
-    # ========================================================
-
-    assert output[
+    assert atlas_output[
         "audit"
     ]["engine_consistency_score"] == (
         92.0
     )
 
-    assert output[
+    assert atlas_output[
         "audit"
     ]["data_quality_score"] == (
         78.0
     )
 
-    assert output[
+    assert atlas_output[
         "audit"
     ]["ai_dissent"] is False
 
-    assert output[
+    assert atlas_output[
         "status"
     ] == "WARNING"
 
     print(
-        "AUDITORIA PRESERVADA: OK"
+        "SP500 — COLETA E VALIDAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 4. COPIAULTIMOROB — IDENTIFICAÇÃO
+    # ========================================================
+
+    copia_payload = (
+        build_copiaultimorob_payload()
+    )
+
+    copia_source = identify_source_system(
+        copia_payload
+    )
+
+    assert copia_source == (
+        "COPIAULTIMOROB"
+    )
+
+    print(
+        "COPIAULTIMOROB — IDENTIFICAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 5. COPIAULTIMOROB — COLLECTOR
+    # ========================================================
+
+    copia_output = collect_payload(
+        copia_payload
+    )
+
+    assert copia_output[
+        "system_id"
+    ] == "global_portfolio"
+
+    assert copia_output[
+        "system_name"
+    ] == "COPIAULTIMOROB"
+
+    assert copia_output[
+        "decision"
+    ]["signal"] == "NEUTRO"
+
+    assert copia_output[
+        "metrics"
+    ]["final_verdict"] == (
+        "REPROVADO_OPERACIONALMENTE"
+    )
+
+    assert copia_output[
+        "metrics"
+    ]["survival_kill_switch"] is True
+
+    assert copia_output[
+        "metrics"
+    ]["stress_level"] == "CRITICO"
+
+    assert copia_output[
+        "metrics"
+    ]["forced_selling_any"] is True
+
+    assert copia_output[
+        "metrics"
+    ]["risk_budget_level"] == "CRITICO"
+
+    assert copia_output[
+        "metrics"
+    ]["top_risk_asset"] == "BTC"
+
+    assert copia_output[
+        "risk"
+    ]["level"] == "CRITICO"
+
+    assert copia_output[
+        "metrics"
+    ]["committee_action"] == (
+        "BLOQUEAR_NOVAS_COMPRAS"
+    )
+
+    assert copia_output[
+        "audit"
+    ]["ai_audit_status"] == (
+        "CONFIRMADO_COM_ALERTAS"
+    )
+
+    assert copia_output[
+        "audit"
+    ]["ai_audit_score"] == 90.0
+
+    assert copia_output[
+        "audit"
+    ]["nvidia_audit_status"] == (
+        "CONFIRMED_WITH_WARNINGS"
+    )
+
+    assert copia_output[
+        "audit"
+    ]["nvidia_audit_score"] == 90.0
+
+    assert copia_output[
+        "status"
+    ] == "WARNING"
+
+    print(
+        "COPIAULTIMOROB — "
+        "COLETA E VALIDAÇÃO: OK"
     )
 
     # ========================================================
@@ -394,7 +663,8 @@ def main():
     print()
     print("=" * 70)
     print(
-        "INVESTMENT CIO COLLECTOR — TESTE OK"
+        "INVESTMENT CIO COLLECTOR — "
+        "SP500 + COPIAULTIMOROB — TESTE OK"
     )
     print("=" * 70)
 
