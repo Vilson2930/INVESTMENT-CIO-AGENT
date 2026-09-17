@@ -39,3 +39,7 @@ jobs:
       - name: Test Collector
         run: |
           python -m tests.test_collector
+
+      - name: Test COPIAULTIMOROB Adapter
+        run: |
+          python -m tests.test_copiaultimorob_adapter
