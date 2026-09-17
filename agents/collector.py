@@ -27,6 +27,10 @@ from adapters.sp500_cycle_adapter import (
     build_sp500_agent_output,
 )
 
+from adapters.copiaultimorob_adapter import (
+    build_copiaultimorob_agent_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -40,6 +44,10 @@ ADAPTER_REGISTRY = {
 
     "SP500_CYCLE_ATLAS": (
         build_sp500_agent_output
+    ),
+
+    "COPIAULTIMOROB": (
+        build_copiaultimorob_agent_output
     ),
 
 }
