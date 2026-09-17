@@ -2,6 +2,14 @@
 # INVESTMENT CIO AGENT
 # tests/test_sp500_adapter.py
 # ============================================================
+#
+# Teste oficial do adaptador:
+# SP500_CYCLE_ATLAS -> INVESTMENT CIO AGENT
+#
+# Baseado na estrutura REAL produzida por:
+# outputs/agent_output_raw.json
+#
+# ============================================================
 
 from adapters.sp500_cycle_adapter import (
     build_sp500_agent_output,
@@ -19,82 +27,207 @@ def main():
     print("=" * 70)
 
     # ========================================================
-    # SAÍDA SIMULADA DO SP500 CYCLE ATLAS
+    # 1. PAYLOAD REAL DO SP500 CYCLE ATLAS
     # ========================================================
 
-    atlas_state = {
+    atlas_payload = {
 
-        "sp500": 7662.15,
+        "source_system": "SP500_CYCLE_ATLAS",
 
-        "drawdown": -0.31,
+        "export_version": "1.0",
 
-        "cape": 42.17,
-
-        "cape_percentile": 98.82,
-
-        "valuation_regime": "EXPENSIVE",
-
-        "market_regime": "BULL",
-
-        "cycle_phase": "LATE_CYCLE",
-
-        "structural_risk": "HIGH",
-
-        "top_timing": "NEUTRAL",
-
-        "operational_regime": (
-            "YELLOW_EXPENSIVE_BULL"
+        "generated_at": (
+            "2026-09-17T17:38:11.232136+00:00"
         ),
 
-        "momentum_regime": "POSITIVE",
+        "current_state": {
 
-        "labor_regime": "NEUTRAL",
+            "date": "2026-09-01",
 
-        "industrial_regime": "NEUTRAL",
+            "sp500": 7633.7001953125,
 
-        "inflation_regime": "NEUTRAL",
+            "drawdown": -0.006822662672481106,
 
-        "monetary_regime": "RESTRICTIVE",
+            "return_12m": 0.1413240476724793,
 
-        "curve_regime": "NORMAL",
+            "cape": 40.52,
 
-        "existing_position": "HOLD",
+            "cape_percentile": (
+                0.9797639123102867
+            ),
 
-        "new_contribution_equity": 0.60,
+            "bull_start_date": "2022-09-01",
 
-        "new_contribution_reserve": 0.40,
+            "bull_start_price": (
+                3585.6201171875
+            ),
 
-        "reserve_stage": 0,
+            "bull_age_years": 4.0,
 
-        "reserve_stage_fraction": 0.0,
+            "bull_return": (
+                1.1289762846657179
+            ),
 
-        "reserve_cumulative_fraction": 0.0,
+            "fed_funds": 3.63,
 
-        "reserve_deployment_status": "NOT_ACTIVE",
+            "fed_change_12m": (
+                -0.7000000000000002
+            ),
 
-        "reserve_pending": True,
+            "yield_curve_10y_2y": (
+                0.45999999999999996
+            ),
 
-        "reserve_blocked_by_regime": True,
+            "inflation_yoy": (
+                3.353016322755642
+            ),
 
-        "confidence": 0.92,
+            "inflation_change_6m": (
+                0.9190122123824196
+            ),
 
-        "risk_score": 75.0,
+            "unemployment": 4.1,
 
-        "audit_status": "CONFIRMED_WITH_ALERTS",
+            "sahm_indicator": -0.07,
 
-        "engine_consistency_score": 96.0,
+            "industrial_production_yoy": (
+                1.0794551200266955
+            ),
 
-        "data_quality_score": 78.0,
+            "valuation_regime": (
+                "EXTREME_TOP_5"
+            ),
 
-        "ai_dissent": False
+            "momentum_regime": "POSITIVE",
+
+            "drawdown_regime": "NORMAL",
+
+            "labor_regime": "STABLE",
+
+            "industrial_regime": "EXPANSION",
+
+            "inflation_regime": (
+                "REACCELERATING"
+            ),
+
+            "monetary_regime": "EASING",
+
+            "curve_regime": (
+                "FLAT_POSITIVE"
+            ),
+
+            "market_regime": "BULL MARKET",
+
+            "cycle_phase": (
+                "LATE_EXPANSION / "
+                "VALUATION_EXTREME"
+            ),
+
+            "structural_risk": "HIGH",
+
+            "top_timing": "NOT_CONFIRMED",
+
+            "macro_deterioration_count": 1,
+
+            "market_deterioration_count": 0,
+
+            "operational_regime": (
+                "YELLOW_EXPENSIVE_BULL"
+            ),
+
+            "existing_position": "HOLD",
+
+            "new_contribution_equity": 0.60,
+
+            "new_contribution_reserve": 0.40,
+
+            "reserve_stage": 0,
+
+            "reserve_stage_fraction": 0.0,
+
+            "reserve_cumulative_fraction": 0.0,
+
+            "reserve_deployment_status": (
+                "NOT_ACTIVE"
+            ),
+
+            "reserve_pending": False,
+
+            "reserve_blocked_by_regime": False,
+        },
+
+        "ai_audit": {
+
+            "audit_status": (
+                "CONFIRMED_WITH_WARNINGS"
+            ),
+
+            "engine_consistency_score": 92.0,
+
+            "data_quality_score": 78.0,
+
+            "ai_dissent": False,
+
+            "regime_audit": (
+                "Regime operacional confirmado "
+                "pela auditoria."
+            ),
+
+            "data_integrity": (
+                "Dados válidos com defasagem "
+                "em séries macroeconômicas."
+            ),
+
+            "rule_consistency": (
+                "Regras do Atlas consistentes."
+            ),
+
+            "policy_consistency": (
+                "Política de aporte consistente "
+                "com o regime."
+            ),
+
+            "reserve_consistency": (
+                "Política da reserva consistente."
+            ),
+
+            "cross_evidence": (
+                "Sem contradições materiais."
+            ),
+
+            "warnings": [
+                (
+                    "Defasagem de 1 a 2 meses "
+                    "em séries macroeconômicas."
+                )
+            ],
+
+            "strengths": [
+                (
+                    "Consistência entre engine "
+                    "e política operacional."
+                )
+            ],
+
+            "manual_review_points": [
+                (
+                    "Monitorar frescor das séries "
+                    "macroeconômicas."
+                )
+            ],
+
+            "final_opinion": (
+                "Execução internamente consistente."
+            ),
+        },
     }
 
     # ========================================================
-    # ADAPTAÇÃO
+    # 2. ADAPTAÇÃO
     # ========================================================
 
     output = build_sp500_agent_output(
-        atlas_state
+        atlas_payload
     )
 
     assert output["system_id"] == (
@@ -105,11 +238,38 @@ def main():
         "SP500_CYCLE_ATLAS"
     )
 
-    assert output["status"] == "OK"
+    print("IDENTIDADE DO SISTEMA: OK")
+
+    # ========================================================
+    # 3. STATUS DA AUDITORIA
+    # ========================================================
+
+    # A auditoria real possui warnings.
+    # Portanto o CIO deve receber WARNING.
+
+    assert output["status"] == "WARNING"
+
+    assert output["audit"]["status"] == (
+        "CONFIRMED_WITH_WARNINGS"
+    )
+
+    assert output["audit"][
+        "ai_dissent"
+    ] is False
+
+    print("STATUS DA AUDITORIA: OK")
+
+    # ========================================================
+    # 4. DECISÃO DO ATLAS
+    # ========================================================
 
     assert output["decision"]["signal"] == (
         "HOLD"
     )
+
+    assert output["decision"][
+        "operational_regime"
+    ] == "YELLOW_EXPENSIVE_BULL"
 
     assert output["decision"][
         "new_contribution_equity"
@@ -119,10 +279,86 @@ def main():
         "new_contribution_reserve"
     ] == 0.40
 
-    print("ADAPTER: OK")
+    print("DECISÃO DO ATLAS: OK")
 
     # ========================================================
-    # VALIDAÇÃO CONTRA O SCHEMA UNIVERSAL
+    # 5. CONFIANÇA
+    # ========================================================
+
+    # 92/100 deve ser normalizado para 0.92.
+
+    assert output["decision"][
+        "confidence"
+    ] == 0.92
+
+    print("NORMALIZAÇÃO DA CONFIANÇA: OK")
+
+    # ========================================================
+    # 6. PRESERVAÇÃO DAS MÉTRICAS
+    # ========================================================
+
+    assert output["metrics"]["sp500"] == (
+        7633.7001953125
+    )
+
+    assert output["metrics"]["cape"] == 40.52
+
+    assert output["metrics"][
+        "cape_percentile"
+    ] == 0.9797639123102867
+
+    assert output["metrics"][
+        "operational_regime"
+    ] == "YELLOW_EXPENSIVE_BULL"
+
+    assert output["metrics"][
+        "structural_risk"
+    ] == "HIGH"
+
+    print("PRESERVAÇÃO DAS MÉTRICAS: OK")
+
+    # ========================================================
+    # 7. PRESERVAÇÃO DA AUDITORIA
+    # ========================================================
+
+    assert output["audit"][
+        "engine_consistency_score"
+    ] == 92.0
+
+    assert output["audit"][
+        "data_quality_score"
+    ] == 78.0
+
+    assert output["data_quality"][
+        "score"
+    ] == 78.0
+
+    print("PRESERVAÇÃO DA AUDITORIA: OK")
+
+    # ========================================================
+    # 8. METADADOS
+    # ========================================================
+
+    assert output["generated_at"] == (
+        "2026-09-17T17:38:11.232136+00:00"
+    )
+
+    assert output["metadata"][
+        "source_export_version"
+    ] == "1.0"
+
+    assert output["metadata"][
+        "adapter_version"
+    ] == "1.1"
+
+    assert output["metadata"][
+        "reserve_deployment_status"
+    ] == "NOT_ACTIVE"
+
+    print("METADADOS: OK")
+
+    # ========================================================
+    # 9. VALIDAÇÃO CONTRA O SCHEMA UNIVERSAL
     # ========================================================
 
     validation = validate_agent_output(
@@ -135,6 +371,7 @@ def main():
         print("ERROS DE VALIDAÇÃO:")
 
         for error in validation["errors"]:
+
             print(
                 f"- {error['path']}: "
                 f"{error['message']}"
@@ -142,39 +379,35 @@ def main():
 
     assert validation["valid"] is True
 
-    print("SCHEMA VALIDATION: OK")
+    print("SCHEMA UNIVERSAL: OK")
 
     # ========================================================
-    # TESTE DE PRESERVAÇÃO
+    # 10. TESTE DE DADOS INCOMPLETOS
     # ========================================================
 
-    assert output["metrics"]["cape"] == 42.17
+    incomplete_payload = {
 
-    assert output["metrics"][
-        "cape_percentile"
-    ] == 98.82
+        "source_system": (
+            "SP500_CYCLE_ATLAS"
+        ),
 
-    assert output["metrics"][
-        "operational_regime"
-    ] == "YELLOW_EXPENSIVE_BULL"
+        "export_version": "1.0",
 
-    assert output["audit"][
-        "engine_consistency_score"
-    ] == 96.0
+        "generated_at": (
+            "2026-09-17T17:38:11+00:00"
+        ),
 
-    print("PRESERVAÇÃO DOS DADOS: OK")
+        "current_state": {
 
-    # ========================================================
-    # TESTE DE DADO INCOMPLETO
-    # ========================================================
+            "existing_position": "HOLD",
+        },
 
-    incomplete_state = {
-        "existing_position": "HOLD"
+        "ai_audit": {},
     }
 
     incomplete_output = (
         build_sp500_agent_output(
-            incomplete_state
+            incomplete_payload
         )
     )
 
@@ -202,6 +435,41 @@ def main():
         "DADOS INCOMPLETOS: "
         "WARNING CORRETAMENTE"
     )
+
+    # ========================================================
+    # 11. TESTE DE PROTEÇÃO CONTRA SISTEMA ERRADO
+    # ========================================================
+
+    wrong_payload = {
+
+        "source_system": "OUTRO_SISTEMA",
+
+        "current_state": {},
+
+        "ai_audit": {},
+    }
+
+    error_detected = False
+
+    try:
+
+        build_sp500_agent_output(
+            wrong_payload
+        )
+
+    except ValueError:
+
+        error_detected = True
+
+    assert error_detected is True
+
+    print(
+        "PROTEÇÃO DE SOURCE_SYSTEM: OK"
+    )
+
+    # ========================================================
+    # RESULTADO FINAL
+    # ========================================================
 
     print()
     print("=" * 70)
