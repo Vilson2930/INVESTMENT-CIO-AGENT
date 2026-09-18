@@ -31,6 +31,10 @@ from adapters.copiaultimorob_adapter import (
     build_copiaultimorob_agent_output,
 )
 
+from adapters.us_equities_adapter import (
+    adapt_us_equities_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -48,6 +52,10 @@ ADAPTER_REGISTRY = {
 
     "COPIAULTIMOROB": (
         build_copiaultimorob_agent_output
+    ),
+
+    "PORTFOLIO_ACOES_AMERICANA": (
+        adapt_us_equities_output
     ),
 
 }
