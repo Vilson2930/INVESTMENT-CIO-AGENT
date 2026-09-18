@@ -43,3 +43,7 @@ jobs:
       - name: Test COPIAULTIMOROB Adapter
         run: |
           python -m tests.test_copiaultimorob_adapter
+
+      - name: Test Synthesis Agent
+        run: |
+          python -m tests.test_synthesis_agent
