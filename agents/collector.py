@@ -47,6 +47,10 @@ from adapters.fii_adapter import (
     adapt_fii_output,
 )
 
+from adapters.growth_adapter import (
+    adapt_growth_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -80,6 +84,10 @@ ADAPTER_REGISTRY = {
 
     "FII_INSTITUTIONAL_SCANNER": (
         adapt_fii_output
+    ),
+
+    "GROWTH_OPPORTUNITY_ENGINE": (
+        adapt_growth_output
     ),
 
 }
