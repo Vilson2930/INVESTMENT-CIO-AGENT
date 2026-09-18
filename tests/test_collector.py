@@ -6,7 +6,7 @@
 # Teste oficial do Collector Central.
 #
 # Verifica:
-# 1. Registro dos sistemas suportados.
+# 1. Registro dos seis sistemas suportados.
 # 2. Identificação do sistema de origem.
 # 3. Seleção automática do adaptador correto.
 # 4. Conversão para o contrato universal.
@@ -14,13 +14,17 @@
 # 6. Preservação dos principais dados de risco.
 # 7. Integração de US Equities.
 # 8. Integração de B3 Equities.
-# 9. Proteção contra sistemas desconhecidos.
+# 9. Registro de AI Infrastructure.
+# 10. Integração de FII Scanner.
+# 11. Proteção contra sistemas desconhecidos.
 #
 # Sistemas atualmente testados:
 # - SP500_CYCLE_ATLAS
 # - COPIAULTIMOROB
 # - PORTFOLIO_ACOES_AMERICANA
 # - PORTFOLIO_B3_OPERATIONAL
+# - AI_INFRASTRUCTURE_SCANNER
+# - FII_INSTITUTIONAL_SCANNER
 #
 # ============================================================
 
@@ -38,6 +42,10 @@ from tests.test_us_equities_adapter import (
 
 from tests.test_b3_equities_adapter import (
     build_sample_raw as build_b3_equities_payload,
+)
+
+from tests.test_fii_adapter import (
+    build_raw_output as build_fii_payload,
 )
 
 
@@ -420,7 +428,7 @@ def main():
     print("=" * 70)
 
     # ========================================================
-    # 1. REGISTRO DOS QUATRO SISTEMAS
+    # 1. REGISTRO DOS SEIS SISTEMAS
     # ========================================================
 
     registered = get_registered_systems()
@@ -430,6 +438,8 @@ def main():
         "COPIAULTIMOROB",
         "PORTFOLIO_ACOES_AMERICANA",
         "PORTFOLIO_B3_OPERATIONAL",
+        "AI_INFRASTRUCTURE_SCANNER",
+        "FII_INSTITUTIONAL_SCANNER",
     ]
 
     for system in expected_systems:
@@ -440,8 +450,16 @@ def main():
             system
         ) is True
 
+    assert len(
+        [
+            system
+            for system in expected_systems
+            if system in registered
+        ]
+    ) == 6
+
     print(
-        "REGISTRO DOS QUATRO SISTEMAS: OK"
+        "REGISTRO DOS SEIS SISTEMAS: OK"
     )
 
     # ========================================================
@@ -831,7 +849,143 @@ def main():
     )
 
     # ========================================================
-    # 10. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
+    # 10. AI INFRASTRUCTURE — REGISTRO NO COLLECTOR
+    # ========================================================
+
+    assert is_system_supported(
+        "AI_INFRASTRUCTURE_SCANNER"
+    ) is True
+
+    assert (
+        "AI_INFRASTRUCTURE_SCANNER"
+        in registered
+    )
+
+    print(
+        "AI INFRASTRUCTURE — "
+        "REGISTRO NO COLLECTOR: OK"
+    )
+
+    # ========================================================
+    # 11. FII — IDENTIFICAÇÃO
+    # ========================================================
+
+    fii_payload = build_fii_payload()
+
+    fii_source = identify_source_system(
+        fii_payload
+    )
+
+    assert fii_source == (
+        "FII_INSTITUTIONAL_SCANNER"
+    )
+
+    print(
+        "FII — IDENTIFICAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 12. FII — COLLECTOR + SCHEMA UNIVERSAL
+    # ========================================================
+
+    fii_output = collect_payload(
+        fii_payload
+    )
+
+    assert fii_output[
+        "system_id"
+    ] == "fii"
+
+    assert fii_output[
+        "system_name"
+    ] == "FII Institutional Scanner"
+
+    assert fii_output[
+        "status"
+    ] == "OK"
+
+    assert fii_output[
+        "decision"
+    ]["signal"] == (
+        "STRATEGIC_PORTFOLIO_WITH_EXECUTION"
+    )
+
+    assert fii_output[
+        "decision"
+    ]["confidence"] is None
+
+    assert fii_output[
+        "metrics"
+    ]["institutional_score"] == 86.99
+
+    assert abs(
+        fii_output[
+            "metrics"
+        ]["executable_weight"]
+        - 0.7062863228
+    ) < 1e-10
+
+    assert abs(
+        fii_output[
+            "metrics"
+        ]["reserved_weight"]
+        - 0.2937136772
+    ) < 1e-10
+
+    assert len(
+        fii_output["positions"]
+    ) == 3
+
+    fii_positions = {
+        position["ticker"]:
+            position
+        for position
+        in fii_output["positions"]
+    }
+
+    assert "MXRF11" in fii_positions
+
+    assert (
+        fii_positions[
+            "MXRF11"
+        ]["final_status"]
+        ==
+        "RESERVA ESTRATÉGICA"
+    )
+
+    assert (
+        fii_positions[
+            "MXRF11"
+        ]["strategic_weight"]
+        ==
+        0.50
+    )
+
+    assert (
+        fii_positions[
+            "MXRF11"
+        ]["reserved_weight"]
+        ==
+        0.2937136772
+    )
+
+    assert (
+        fii_output[
+            "metadata"
+        ][
+            "adapter_policy"
+        ][
+            "executes_broker_orders"
+        ]
+        is False
+    )
+
+    print(
+        "FII — COLETA E VALIDAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 13. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
     # ========================================================
 
     unsupported_payload = {
@@ -872,10 +1026,12 @@ def main():
 
     print()
     print("=" * 70)
+
     print(
         "INVESTMENT CIO COLLECTOR — "
-        "4 SISTEMAS — TESTE OK"
+        "6 SISTEMAS — TESTE OK"
     )
+
     print("=" * 70)
 
 
