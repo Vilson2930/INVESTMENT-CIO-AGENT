@@ -43,6 +43,10 @@ from adapters.ai_infrastructure_adapter import (
     adapt_ai_infrastructure_output,
 )
 
+from adapters.fii_adapter import (
+    adapt_fii_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -72,6 +76,10 @@ ADAPTER_REGISTRY = {
 
     "AI_INFRASTRUCTURE_SCANNER": (
         adapt_ai_infrastructure_output
+    ),
+
+    "FII_INSTITUTIONAL_SCANNER": (
+        adapt_fii_output
     ),
 
 }
