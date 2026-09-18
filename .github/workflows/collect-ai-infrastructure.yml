@@ -1,370 +1,471 @@
-# ============================================================
-# INVESTMENT CIO AGENT
-# agents/collector.py
-# ============================================================
-#
-# Coletor central de outputs dos sistemas quantitativos.
-#
-# Responsabilidades:
-# 1. Ler a saída bruta de um sistema.
-# 2. Identificar o sistema de origem.
-# 3. Encaminhar ao adaptador correto.
-# 4. Validar contra o contrato universal.
-# 5. Retornar resultado padronizado ao CIO Agent.
-#
-# O collector NÃO:
-# - recalcula indicadores;
-# - altera sinais;
-# - muda decisões dos robôs;
-# - executa ordens.
-#
-# ============================================================
-
-import json
-from pathlib import Path
-
-from adapters.sp500_cycle_adapter import (
-    build_sp500_agent_output,
-)
-
-from adapters.copiaultimorob_adapter import (
-    build_copiaultimorob_agent_output,
-)
-
-from adapters.us_equities_adapter import (
-    adapt_us_equities_output,
-)
-
-from adapters.b3_equities_adapter import (
-    adapt_b3_equities_output,
-)
-
-from adapters.ai_infrastructure_adapter import (
-    adapt_ai_infrastructure_output,
-)
-
-from agents.validator import (
-    validate_agent_output,
-)
-
-
-# ============================================================
-# REGISTRO DE ADAPTADORES
-# ============================================================
-
-ADAPTER_REGISTRY = {
-
-    "SP500_CYCLE_ATLAS": (
-        build_sp500_agent_output
-    ),
-
-    "COPIAULTIMOROB": (
-        build_copiaultimorob_agent_output
-    ),
-
-    "PORTFOLIO_ACOES_AMERICANA": (
-        adapt_us_equities_output
-    ),
-
-    "PORTFOLIO_B3_OPERATIONAL": (
-        adapt_b3_equities_output
-    ),
-
-    "AI_INFRASTRUCTURE_SCANNER": (
-        adapt_ai_infrastructure_output
-    ),
-
-}
-
-
-# ============================================================
-# EXCEÇÕES
-# ============================================================
-
-class CollectorError(Exception):
-    """Erro geral do collector."""
-
-
-class UnsupportedSystemError(CollectorError):
-    """Sistema ainda não possui adaptador registrado."""
-
-
-class InvalidRawOutputError(CollectorError):
-    """Output bruto inválido ou incompleto."""
-
-
-class UniversalValidationError(CollectorError):
-    """Output adaptado não passou pelo schema universal."""
-
-
-# ============================================================
-# LEITURA DO JSON
-# ============================================================
-
-def load_raw_output(file_path):
-
-    path = Path(file_path)
-
-    if not path.exists():
-
-        raise FileNotFoundError(
-            f"Arquivo não encontrado: {path}"
-        )
-
-    if not path.is_file():
-
-        raise InvalidRawOutputError(
-            f"O caminho não é um arquivo: {path}"
-        )
-
-    try:
-
-        with open(
-            path,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            payload = json.load(file)
-
-    except json.JSONDecodeError as error:
-
-        raise InvalidRawOutputError(
-            f"JSON inválido em {path}: {error}"
-        ) from error
-
-    if not isinstance(payload, dict):
-
-        raise InvalidRawOutputError(
-            "A saída bruta deve possuir "
-            "um objeto JSON na raiz."
-        )
-
-    return payload
-
-
-# ============================================================
-# IDENTIFICAÇÃO DO SISTEMA
-# ============================================================
-
-def identify_source_system(payload):
-
-    if not isinstance(payload, dict):
-
-        raise InvalidRawOutputError(
-            "Payload deve ser um dicionário."
-        )
-
-    source_system = payload.get(
-        "source_system"
-    )
-
-    if not source_system:
-
-        raise InvalidRawOutputError(
-            "Campo obrigatório "
-            "'source_system' não encontrado."
-        )
-
-    if not isinstance(
-        source_system,
-        str
-    ):
-
-        raise InvalidRawOutputError(
-            "Campo 'source_system' deve "
-            "ser uma string."
-        )
-
-    return source_system
-
-
-# ============================================================
-# SELEÇÃO DO ADAPTADOR
-# ============================================================
-
-def get_adapter(source_system):
-
-    adapter = ADAPTER_REGISTRY.get(
-        source_system
-    )
-
-    if adapter is None:
-
-        raise UnsupportedSystemError(
-            "Sistema sem adaptador registrado: "
-            f"{source_system}"
-        )
-
-    return adapter
-
-
-# ============================================================
-# VALIDAÇÃO UNIVERSAL
-# ============================================================
-
-def validate_universal_output(output):
-
-    validation = validate_agent_output(
-        output
-    )
-
-    if not validation["valid"]:
-
-        errors = validation.get(
-            "errors",
-            []
-        )
-
-        formatted_errors = []
-
-        for error in errors:
-
-            path = error.get(
-                "path",
-                "unknown"
-            )
-
-            message = error.get(
-                "message",
-                "Erro desconhecido."
-            )
-
-            formatted_errors.append(
-                f"{path}: {message}"
-            )
-
-        error_text = "; ".join(
-            formatted_errors
-        )
-
-        raise UniversalValidationError(
-            "Output adaptado não passou "
-            "pelo contrato universal. "
-            f"Erros: {error_text}"
-        )
-
-    return validation
-
-
-# ============================================================
-# PROCESSAMENTO DE PAYLOAD
-# ============================================================
-
-def collect_payload(payload):
-
-    source_system = (
-        identify_source_system(
-            payload
-        )
-    )
-
-    adapter = get_adapter(
-        source_system
-    )
-
-    output = adapter(
-        payload
-    )
-
-    validate_universal_output(
-        output
-    )
-
-    return output
-
-
-# ============================================================
-# PROCESSAMENTO DE ARQUIVO
-# ============================================================
-
-def collect_file(file_path):
-
-    payload = load_raw_output(
-        file_path
-    )
-
-    return collect_payload(
-        payload
-    )
-
-
-# ============================================================
-# PROCESSAMENTO SEGURO
-# ============================================================
-
-def safe_collect_file(file_path):
-
-    try:
-
-        output = collect_file(
-            file_path
-        )
-
-        return {
-
-            "success": True,
-
-            "system_id": output.get(
-                "system_id"
-            ),
-
-            "system_name": output.get(
-                "system_name"
-            ),
-
-            "status": output.get(
-                "status"
-            ),
-
-            "output": output,
-
-            "error": None,
-        }
-
-    except Exception as error:
-
-        return {
-
-            "success": False,
-
-            "system_id": None,
-
-            "system_name": None,
-
-            "status": "ERROR",
-
-            "output": None,
-
-            "error": {
-
-                "type": type(
-                    error
-                ).__name__,
-
-                "message": str(
-                    error
-                ),
-            },
-        }
-
-
-# ============================================================
-# INFORMAÇÕES DO COLLECTOR
-# ============================================================
-
-def get_registered_systems():
-
-    return sorted(
-        ADAPTER_REGISTRY.keys()
-    )
-
-
-def is_system_supported(
-    source_system
-):
-
-    return (
-        source_system
-        in ADAPTER_REGISTRY
-    )
+name: Collect AI Infrastructure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    name: Collect AI Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ======================================================
+      # 1. CHECKOUT DO INVESTMENT CIO
+      # ======================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ======================================================
+      # 2. CONFIGURAR PYTHON
+      # ======================================================
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ======================================================
+      # 3. INSTALAR DEPENDÊNCIAS
+      # ======================================================
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ======================================================
+      # 4. PREPARAR DIRETÓRIOS
+      # ======================================================
+      - name: Prepare directories
+        run: |
+          mkdir -p inputs/ai_infrastructure
+          mkdir -p outputs
+          mkdir -p temp/ai_infrastructure
+
+      # ======================================================
+      # 5. LOCALIZAR ARTIFACT MAIS RECENTE DO MOTOR
+      # ======================================================
+      - name: Find latest AI Infrastructure artifact
+        id: find_artifact
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = "Vilson2930/AI_INFRASTRUCTURE_SCANNER"
+          artifact_name = "ai-infrastructure-agent-output"
+
+          url = (
+              "https://api.github.com/repos/"
+              f"{repo}/actions/artifacts?per_page=100"
+          )
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+
+          with urllib.request.urlopen(request) as response:
+              payload = json.load(response)
+
+          artifacts = [
+              artifact
+              for artifact in payload.get("artifacts", [])
+              if (
+                  artifact.get("name") == artifact_name
+                  and not artifact.get("expired", False)
+              )
+          ]
+
+          if not artifacts:
+              raise RuntimeError(
+                  "Nenhum artifact válido encontrado com o nome "
+                  f"{artifact_name!r}."
+              )
+
+          artifacts.sort(
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+
+          artifact = artifacts[0]
+          artifact_id = artifact["id"]
+
+          print("=" * 70)
+          print("ARTIFACT ENCONTRADO")
+          print("=" * 70)
+          print(f"Nome: {artifact.get('name')}")
+          print(f"ID: {artifact_id}")
+          print(f"Criado em: {artifact.get('created_at')}")
+          print("=" * 70)
+
+          with open(
+              os.environ["GITHUB_OUTPUT"],
+              "a",
+              encoding="utf-8",
+          ) as file:
+              file.write(f"artifact_id={artifact_id}\n")
+          PY
+
+      # ======================================================
+      # 6. BAIXAR ARTIFACT
+      # ======================================================
+      - name: Download AI Infrastructure artifact
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+          ARTIFACT_ID: ${{ steps.find_artifact.outputs.artifact_id }}
+        run: |
+          python - <<'PY'
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          repo = "Vilson2930/AI_INFRASTRUCTURE_SCANNER"
+          artifact_id = os.environ["ARTIFACT_ID"]
+
+          url = (
+              "https://api.github.com/repos/"
+              f"{repo}/actions/artifacts/{artifact_id}/zip"
+          )
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+
+          output_path = Path(
+              "temp/ai_infrastructure/artifact.zip"
+          )
+
+          with urllib.request.urlopen(request) as response:
+              content = response.read()
+
+          output_path.write_bytes(content)
+
+          print(f"Artifact salvo em: {output_path}")
+          print(f"Tamanho: {len(content)} bytes")
+          PY
+
+      # ======================================================
+      # 7. EXTRAIR ARTIFACT
+      # ======================================================
+      - name: Extract artifact
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          zip_path = Path(
+              "temp/ai_infrastructure/artifact.zip"
+          )
+
+          extract_path = Path(
+              "temp/ai_infrastructure/extracted"
+          )
+
+          extract_path.mkdir(
+              parents=True,
+              exist_ok=True,
+          )
+
+          with ZipFile(zip_path, "r") as archive:
+              archive.extractall(extract_path)
+
+          print("Arquivos extraídos:")
+
+          for path in sorted(extract_path.rglob("*")):
+              if path.is_file():
+                  print(path)
+          PY
+
+      # ======================================================
+      # 8. LOCALIZAR agent_output_raw.json
+      # ======================================================
+      - name: Locate raw agent output
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          base = Path(
+              "temp/ai_infrastructure/extracted"
+          )
+
+          matches = list(
+              base.rglob("agent_output_raw.json")
+          )
+
+          if not matches:
+              raise FileNotFoundError(
+                  "agent_output_raw.json não foi encontrado "
+                  "dentro do artifact."
+              )
+
+          if len(matches) > 1:
+              raise RuntimeError(
+                  "Mais de um agent_output_raw.json "
+                  "foi encontrado no artifact."
+              )
+
+          source = matches[0]
+
+          destination = Path(
+              "inputs/ai_infrastructure/"
+              "agent_output_raw.json"
+          )
+
+          shutil.copy2(
+              source,
+              destination,
+          )
+
+          print(f"Origem: {source}")
+          print(f"Destino: {destination}")
+          PY
+
+      # ======================================================
+      # 9. CONFERIR JSON BRUTO
+      # ======================================================
+      - name: Inspect raw AI Infrastructure output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "inputs/ai_infrastructure/"
+              "agent_output_raw.json"
+          )
+
+          with path.open(
+              "r",
+              encoding="utf-8",
+          ) as file:
+              payload = json.load(file)
+
+          source_system = payload.get("source_system")
+
+          if source_system != "AI_INFRASTRUCTURE_SCANNER":
+              raise RuntimeError(
+                  "source_system inesperado: "
+                  f"{source_system!r}"
+              )
+
+          executive_ranking = (
+              payload.get("executive_ranking")
+              or []
+          )
+
+          approved_entries = (
+              payload.get("approved_entries")
+              or []
+          )
+
+          watchlist = (
+              payload.get("watchlist")
+              or []
+          )
+
+          print("=" * 70)
+          print("RAW OUTPUT RECEBIDO")
+          print("=" * 70)
+          print(f"source_system: {source_system}")
+          print(
+              "executive_ranking: "
+              f"{len(executive_ranking)}"
+          )
+          print(
+              "approved_entries: "
+              f"{len(approved_entries)}"
+          )
+          print(
+              "watchlist: "
+              f"{len(watchlist)}"
+          )
+          print("=" * 70)
+          PY
+
+      # ======================================================
+      # 10. PROCESSAR PELO COLLECTOR CENTRAL
+      # ======================================================
+      - name: Process AI Infrastructure output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.collector import collect_file
+
+          source = Path(
+              "inputs/ai_infrastructure/"
+              "agent_output_raw.json"
+          )
+
+          destination = Path(
+              "outputs/"
+              "ai_infrastructure_agent_output.json"
+          )
+
+          output = collect_file(source)
+
+          with destination.open(
+              "w",
+              encoding="utf-8",
+          ) as file:
+              json.dump(
+                  output,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+                  allow_nan=False,
+              )
+
+          metrics = output.get("metrics") or {}
+          decision = output.get("decision") or {}
+
+          print("=" * 70)
+          print("INVESTMENT CIO — AI INFRASTRUCTURE")
+          print("=" * 70)
+          print(
+              f"System ID: "
+              f"{output.get('system_id')}"
+          )
+          print(
+              f"System Name: "
+              f"{output.get('system_name')}"
+          )
+          print(
+              f"Status: "
+              f"{output.get('status')}"
+          )
+          print(
+              f"Signal: "
+              f"{decision.get('signal')}"
+          )
+          print(
+              "Empresas classificadas: "
+              f"{metrics.get('classified_companies')}"
+          )
+          print(
+              "Entradas aprovadas: "
+              f"{metrics.get('approved_entries')}"
+          )
+          print(
+              "Watchlist: "
+              f"{metrics.get('watchlist_size')}"
+          )
+          print(
+              "Oportunidades preservadas: "
+              f"{len(output.get('opportunities', []))}"
+          )
+          print(
+              "Distribuição de sinais: "
+              f"{metrics.get('signal_counts')}"
+          )
+          print("=" * 70)
+          print(f"Output salvo em: {destination}")
+          print("=" * 70)
+          PY
+
+      # ======================================================
+      # 11. VALIDAR CONTRATO UNIVERSAL
+      # ======================================================
+      - name: Validate universal output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.validator import validate_agent_output
+
+          path = Path(
+              "outputs/"
+              "ai_infrastructure_agent_output.json"
+          )
+
+          with path.open(
+              "r",
+              encoding="utf-8",
+          ) as file:
+              payload = json.load(file)
+
+          validation = validate_agent_output(
+              payload
+          )
+
+          if not validation["valid"]:
+              print("ERROS DE VALIDAÇÃO:")
+
+              for error in validation.get(
+                  "errors",
+                  []
+              ):
+                  print(error)
+
+              raise RuntimeError(
+                  "Output não passou pelo "
+                  "schema universal."
+              )
+
+          if payload.get("system_id") != "ai_infrastructure":
+              raise RuntimeError(
+                  "system_id inesperado."
+              )
+
+          decision = payload.get("decision") or {}
+
+          if (
+              decision.get("signal")
+              != "OPPORTUNITY_SCANNER"
+          ):
+              raise RuntimeError(
+                  "Sinal universal inesperado: "
+                  f"{decision.get('signal')!r}"
+              )
+
+          audit = payload.get("audit") or {}
+
+          if audit.get("ranking_recalculated") is True:
+              raise RuntimeError(
+                  "O adapter indica recálculo "
+                  "indevido do ranking."
+              )
+
+          if audit.get("signals_recalculated") is True:
+              raise RuntimeError(
+                  "O adapter indica recálculo "
+                  "indevido dos sinais."
+              )
+
+          print("=" * 70)
+          print(
+              "AI INFRASTRUCTURE OUTPUT "
+              "VALIDADO COM SUCESSO"
+          )
+          print("=" * 70)
+          PY
+
+      # ======================================================
+      # 12. PUBLICAR OUTPUT NORMALIZADO DO CIO
+      # ======================================================
+      - name: Upload Investment CIO AI Infrastructure output
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment-cio-ai-infrastructure-output
+          path: outputs/ai_infrastructure_agent_output.json
+          if-no-files-found: error
+          retention-days: 30
