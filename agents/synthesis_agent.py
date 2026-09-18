@@ -25,7 +25,7 @@
 from datetime import datetime, timezone
 
 
-SYNTHESIS_VERSION = "1.0"
+SYNTHESIS_VERSION = "1.1"
 
 
 # ============================================================
@@ -66,6 +66,58 @@ def _safe_list(value):
         return value
 
     return []
+
+
+def _flatten_alerts(value):
+    """
+    Normaliza alertas sem alterar seu conteúdo semântico.
+
+    Aceita:
+    - string simples;
+    - listas aninhadas;
+    - strings que representam listas Python/JSON.
+
+    Retorna sempre uma lista plana de strings.
+    """
+    import ast
+
+    result = []
+
+    def visit(item):
+        if item is None:
+            return
+
+        if isinstance(item, (list, tuple, set)):
+            for child in item:
+                visit(child)
+            return
+
+        if isinstance(item, str):
+            stripped = item.strip()
+
+            if not stripped:
+                return
+
+            if (
+                (stripped.startswith("[") and stripped.endswith("]"))
+                or (stripped.startswith("(") and stripped.endswith(")"))
+            ):
+                try:
+                    parsed = ast.literal_eval(stripped)
+                except (ValueError, SyntaxError):
+                    parsed = None
+
+                if isinstance(parsed, (list, tuple, set)):
+                    visit(parsed)
+                    return
+
+            result.append(stripped)
+            return
+
+        result.append(str(item))
+
+    visit(value)
+    return _unique_list(result)
 
 
 def _unique_list(values):
@@ -542,18 +594,22 @@ def _build_risk_alerts(
 
     alerts = []
 
-    for alert in sp500_view.get(
-        "risk_alerts",
-        []
+    for alert in _flatten_alerts(
+        sp500_view.get(
+            "risk_alerts",
+            []
+        )
     ):
 
         alerts.append(
             f"SP500_CYCLE_ATLAS: {alert}"
         )
 
-    for alert in global_view.get(
-        "risk_alerts",
-        []
+    for alert in _flatten_alerts(
+        global_view.get(
+            "risk_alerts",
+            []
+        )
     ):
 
         alerts.append(
