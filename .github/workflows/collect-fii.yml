@@ -1,0 +1,603 @@
+name: Collect FII Scanner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+
+  collect-fii:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ======================================================
+      # 1. CHECKOUT DO INVESTMENT CIO AGENT
+      # ======================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ======================================================
+      # 2. PYTHON
+      # ======================================================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ======================================================
+      # 3. DEPENDÊNCIAS
+      # ======================================================
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ======================================================
+      # 4. DIRETÓRIOS
+      # ======================================================
+
+      - name: Prepare directories
+        run: |
+          mkdir -p inputs/fii
+          mkdir -p outputs
+          mkdir -p temp_fii_artifact
+
+      # ======================================================
+      # 5. LOCALIZAR O ÚLTIMO ARTIFACT DO FII SCANNER
+      #
+      # Repositório de origem:
+      # Vilson2930/FII-Scanner
+      #
+      # Artifact esperado:
+      # fii-scanner-agent-output
+      # ======================================================
+
+      - name: Find latest FII Scanner artifact
+        id: find_artifact
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = "Vilson2930/FII-Scanner"
+          artifact_name = "fii-scanner-agent-output"
+
+          token = os.environ["GH_TOKEN"]
+
+          url = (
+              f"https://api.github.com/repos/"
+              f"{repository}/actions/artifacts"
+              f"?name={artifact_name}"
+              f"&per_page=100"
+          )
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "investment-cio-agent",
+              },
+          )
+
+          with urllib.request.urlopen(
+              request,
+              timeout=30,
+          ) as response:
+              payload = json.load(response)
+
+          artifacts = [
+              artifact
+              for artifact in payload.get(
+                  "artifacts",
+                  []
+              )
+              if (
+                  artifact.get("name")
+                  == artifact_name
+                  and not artifact.get(
+                      "expired",
+                      False
+                  )
+              )
+          ]
+
+          if not artifacts:
+              raise RuntimeError(
+                  "Nenhum artifact válido "
+                  "'fii-scanner-agent-output' "
+                  "foi encontrado no repositório "
+                  "Vilson2930/FII-Scanner."
+              )
+
+          artifacts.sort(
+              key=lambda artifact:
+                  artifact.get(
+                      "created_at",
+                      ""
+                  ),
+              reverse=True,
+          )
+
+          artifact = artifacts[0]
+
+          artifact_id = artifact.get(
+              "id"
+          )
+
+          workflow_run = (
+              artifact.get(
+                  "workflow_run"
+              )
+              or {}
+          )
+
+          run_id = workflow_run.get(
+              "id"
+          )
+
+          if not artifact_id:
+              raise RuntimeError(
+                  "Artifact encontrado, "
+                  "mas sem artifact_id."
+              )
+
+          if not run_id:
+              raise RuntimeError(
+                  "Artifact encontrado, "
+                  "mas sem workflow_run.id."
+              )
+
+          print(
+              "Artifact encontrado:"
+          )
+          print(
+              f"  Nome       : "
+              f"{artifact.get('name')}"
+          )
+          print(
+              f"  Artifact ID: "
+              f"{artifact_id}"
+          )
+          print(
+              f"  Run ID     : "
+              f"{run_id}"
+          )
+          print(
+              f"  Criado em  : "
+              f"{artifact.get('created_at')}"
+          )
+
+          github_output = os.environ[
+              "GITHUB_OUTPUT"
+          ]
+
+          with open(
+              github_output,
+              "a",
+              encoding="utf-8",
+          ) as file:
+              file.write(
+                  f"artifact_id="
+                  f"{artifact_id}\n"
+              )
+              file.write(
+                  f"run_id="
+                  f"{run_id}\n"
+              )
+          PY
+
+      # ======================================================
+      # 6. DOWNLOAD CROSS-REPOSITORY
+      #
+      # Usamos a action oficial em vez de baixar o ZIP
+      # manualmente pela API.
+      # ======================================================
+
+      - name: Download FII Scanner artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: fii-scanner-agent-output
+          repository: Vilson2930/FII-Scanner
+          run-id: ${{ steps.find_artifact.outputs.run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+          path: temp_fii_artifact/extracted
+
+      # ======================================================
+      # 7. MOSTRAR O QUE FOI RECEBIDO
+      # ======================================================
+
+      - name: List downloaded files
+        run: |
+          echo "Arquivos recebidos do FII Scanner:"
+          find temp_fii_artifact -type f -print
+
+      # ======================================================
+      # 8. LOCALIZAR agent_output_raw.json
+      # ======================================================
+
+      - name: Prepare FII Scanner input
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          root = Path(
+              "temp_fii_artifact/extracted"
+          )
+
+          matches = list(
+              root.rglob(
+                  "agent_output_raw.json"
+              )
+          )
+
+          if not matches:
+              raise FileNotFoundError(
+                  "agent_output_raw.json "
+                  "não encontrado dentro "
+                  "do artifact do FII Scanner."
+              )
+
+          if len(matches) > 1:
+              print(
+                  "AVISO: mais de um "
+                  "agent_output_raw.json "
+                  "foi encontrado."
+              )
+
+              for item in matches:
+                  print(
+                      f" - {item}"
+                  )
+
+          source = matches[0]
+
+          destination = Path(
+              "inputs/fii/"
+              "agent_output_raw.json"
+          )
+
+          destination.parent.mkdir(
+              parents=True,
+              exist_ok=True,
+          )
+
+          shutil.copy2(
+              source,
+              destination,
+          )
+
+          print(
+              "Arquivo preparado:"
+          )
+          print(
+              f"  origem : {source}"
+          )
+          print(
+              f"  destino: {destination}"
+          )
+          PY
+
+      # ======================================================
+      # 9. PROCESSAR PELO COLLECTOR CENTRAL
+      #
+      # Aqui ocorre:
+      #
+      # raw JSON
+      #    ↓
+      # identify_source_system
+      #    ↓
+      # FII adapter
+      #    ↓
+      # schema universal
+      # ======================================================
+
+      - name: Process FII Scanner with Collector
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.collector import (
+              collect_file,
+          )
+
+          input_file = Path(
+              "inputs/fii/"
+              "agent_output_raw.json"
+          )
+
+          output_file = Path(
+              "outputs/"
+              "fii_agent_output.json"
+          )
+
+          output = collect_file(
+              input_file
+          )
+
+          output_file.parent.mkdir(
+              parents=True,
+              exist_ok=True,
+          )
+
+          with open(
+              output_file,
+              "w",
+              encoding="utf-8",
+          ) as file:
+              json.dump(
+                  output,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+                  allow_nan=False,
+              )
+
+          print(
+              "FII Scanner processado "
+              "pelo Investment CIO Agent."
+          )
+
+          print(
+              f"System ID: "
+              f"{output.get('system_id')}"
+          )
+
+          print(
+              f"System name: "
+              f"{output.get('system_name')}"
+          )
+
+          print(
+              f"Status: "
+              f"{output.get('status')}"
+          )
+
+          decision = (
+              output.get(
+                  "decision"
+              )
+              or {}
+          )
+
+          print(
+              f"Signal: "
+              f"{decision.get('signal')}"
+          )
+
+          metrics = (
+              output.get(
+                  "metrics"
+              )
+              or {}
+          )
+
+          print(
+              f"Ranking: "
+              f"{metrics.get('ranking_count')}"
+          )
+
+          print(
+              f"Portfolio: "
+              f"{metrics.get('portfolio_count')}"
+          )
+
+          print(
+              f"Peso estratégico: "
+              f"{metrics.get('strategic_weight')}"
+          )
+
+          print(
+              f"Peso executável: "
+              f"{metrics.get('executable_weight')}"
+          )
+
+          print(
+              f"Peso reservado: "
+              f"{metrics.get('reserved_weight')}"
+          )
+
+          print(
+              f"Posições: "
+              f"{len(output.get('positions') or [])}"
+          )
+
+          print(
+              f"Oportunidades: "
+              f"{len(output.get('opportunities') or [])}"
+          )
+          PY
+
+      # ======================================================
+      # 10. VALIDAÇÃO FINAL DO OUTPUT UNIVERSAL
+      # ======================================================
+
+      - name: Validate FII Scanner CIO output
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.validator import (
+              validate_agent_output,
+          )
+
+          output_file = Path(
+              "outputs/"
+              "fii_agent_output.json"
+          )
+
+          if not output_file.exists():
+              raise FileNotFoundError(
+                  "Output central do FII "
+                  "não foi gerado."
+              )
+
+          with open(
+              output_file,
+              "r",
+              encoding="utf-8",
+          ) as file:
+              output = json.load(
+                  file
+              )
+
+          if (
+              output.get(
+                  "system_id"
+              )
+              != "fii"
+          ):
+              raise RuntimeError(
+                  "system_id inesperado: "
+                  f"{output.get('system_id')}"
+              )
+
+          if (
+              output.get(
+                  "system_name"
+              )
+              != "FII Institutional Scanner"
+          ):
+              raise RuntimeError(
+                  "system_name inesperado: "
+                  f"{output.get('system_name')}"
+              )
+
+          validation = (
+              validate_agent_output(
+                  output
+              )
+          )
+
+          if not validation[
+              "valid"
+          ]:
+              raise RuntimeError(
+                  "Output FII inválido no "
+                  "schema universal: "
+                  f"{validation.get('errors')}"
+              )
+
+          positions = (
+              output.get(
+                  "positions"
+              )
+              or []
+          )
+
+          opportunities = (
+              output.get(
+                  "opportunities"
+              )
+              or []
+          )
+
+          if not positions:
+              raise RuntimeError(
+                  "Nenhuma posição FII "
+                  "foi recebida."
+              )
+
+          if not opportunities:
+              raise RuntimeError(
+                  "Nenhum ranking FII "
+                  "foi recebido."
+              )
+
+          metrics = (
+              output.get(
+                  "metrics"
+              )
+              or {}
+          )
+
+          executable = metrics.get(
+              "executable_weight"
+          )
+
+          reserved = metrics.get(
+              "reserved_weight"
+          )
+
+          if (
+              executable is not None
+              and reserved is not None
+          ):
+              total = (
+                  float(executable)
+                  +
+                  float(reserved)
+              )
+
+              if abs(
+                  total - 1.0
+              ) > 1e-6:
+                  raise RuntimeError(
+                      "Peso executável + "
+                      "peso reservado não "
+                      "somam aproximadamente 1. "
+                      f"Resultado: {total}"
+                  )
+
+          print(
+              "FII Investment CIO output "
+              "validado com sucesso."
+          )
+
+          print(
+              f"System ID: "
+              f"{output['system_id']}"
+          )
+
+          print(
+              f"Status: "
+              f"{output['status']}"
+          )
+
+          print(
+              f"FIIs na carteira: "
+              f"{len(positions)}"
+          )
+
+          print(
+              f"FIIs no ranking: "
+              f"{len(opportunities)}"
+          )
+
+          print(
+              f"Peso executável: "
+              f"{executable}"
+          )
+
+          print(
+              f"Peso reservado: "
+              f"{reserved}"
+          )
+          PY
+
+      # ======================================================
+      # 11. UPLOAD DO OUTPUT CENTRAL
+      # ======================================================
+
+      - name: Upload Investment CIO FII output
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment-cio-fii-output
+          path: outputs/fii_agent_output.json
+          if-no-files-found: error
+          retention-days: 30
