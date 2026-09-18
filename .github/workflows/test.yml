@@ -56,6 +56,10 @@ jobs:
         run: |
           python -m tests.test_ai_infrastructure_adapter
 
+      - name: Test FII Adapter
+        run: |
+          python -m tests.test_fii_adapter
+
       - name: Test Synthesis Agent
         run: |
           python -m tests.test_synthesis_agent
