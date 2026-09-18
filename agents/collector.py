@@ -35,6 +35,10 @@ from adapters.us_equities_adapter import (
     adapt_us_equities_output,
 )
 
+from adapters.b3_equities_adapter import (
+    adapt_b3_equities_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -56,6 +60,10 @@ ADAPTER_REGISTRY = {
 
     "PORTFOLIO_ACOES_AMERICANA": (
         adapt_us_equities_output
+    ),
+
+    "PORTFOLIO_B3_OPERATIONAL": (
+        adapt_b3_equities_output
     ),
 
 }
