@@ -6,7 +6,7 @@
 # Teste oficial do Collector Central.
 #
 # Verifica:
-# 1. Registro dos seis sistemas suportados.
+# 1. Registro dos sete sistemas suportados.
 # 2. Identificação do sistema de origem.
 # 3. Seleção automática do adaptador correto.
 # 4. Conversão para o contrato universal.
@@ -25,6 +25,7 @@
 # - PORTFOLIO_B3_OPERATIONAL
 # - AI_INFRASTRUCTURE_SCANNER
 # - FII_INSTITUTIONAL_SCANNER
+# - GROWTH_OPPORTUNITY_ENGINE
 #
 # ============================================================
 
@@ -46,6 +47,10 @@ from tests.test_b3_equities_adapter import (
 
 from tests.test_fii_adapter import (
     build_raw_output as build_fii_payload,
+)
+
+from tests.test_growth_adapter import (
+    build_payload as build_growth_payload,
 )
 
 
@@ -428,7 +433,7 @@ def main():
     print("=" * 70)
 
     # ========================================================
-    # 1. REGISTRO DOS SEIS SISTEMAS
+    # 1. REGISTRO DOS SETE SISTEMAS
     # ========================================================
 
     registered = get_registered_systems()
@@ -440,6 +445,7 @@ def main():
         "PORTFOLIO_B3_OPERATIONAL",
         "AI_INFRASTRUCTURE_SCANNER",
         "FII_INSTITUTIONAL_SCANNER",
+        "GROWTH_OPPORTUNITY_ENGINE",
     ]
 
     for system in expected_systems:
@@ -456,10 +462,10 @@ def main():
             for system in expected_systems
             if system in registered
         ]
-    ) == 6
+    ) == 7
 
     print(
-        "REGISTRO DOS SEIS SISTEMAS: OK"
+        "REGISTRO DOS SETE SISTEMAS: OK"
     )
 
     # ========================================================
@@ -985,7 +991,79 @@ def main():
     )
 
     # ========================================================
-    # 13. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
+    # 13. GROWTH — IDENTIFICAÇÃO
+    # ========================================================
+
+    growth_payload = build_growth_payload()
+
+    growth_source = identify_source_system(
+        growth_payload
+    )
+
+    assert growth_source == (
+        "GROWTH_OPPORTUNITY_ENGINE"
+    )
+
+    print(
+        "GROWTH — IDENTIFICAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 14. GROWTH — COLLECTOR + SCHEMA UNIVERSAL
+    # ========================================================
+
+    growth_output = collect_payload(
+        growth_payload
+    )
+
+    assert growth_output["system_id"] == "growth"
+    assert growth_output["system_name"] == "Growth Opportunity Engine"
+    assert growth_output["status"] == "OK"
+
+    assert growth_output["decision"]["signal"] == (
+        "OPPORTUNITY_SET_WITH_ENTRY_SIGNALS"
+    )
+
+    assert growth_output["decision"]["confidence"] is None
+
+    assert len(growth_output["opportunities"]) == 3
+
+    growth_tickers = [
+        opportunity["ticker"]
+        for opportunity in growth_output["opportunities"]
+    ]
+
+    assert growth_tickers == [
+        "AAA",
+        "BBB",
+        "CCC",
+    ]
+
+    growth_signals = {
+        opportunity["ticker"]: opportunity["signal"]
+        for opportunity in growth_output["opportunities"]
+    }
+
+    assert growth_signals["AAA"] == "ENTRADA_FORTE"
+    assert growth_signals["BBB"] == "ENTRADA_PARCIAL"
+    assert growth_signals["CCC"] == "AGUARDAR"
+
+    assert growth_output["opportunities"][0]["falling_score"] == 1
+    assert growth_output["opportunities"][1]["confirmations_total"] == 1
+    assert growth_output["opportunities"][1]["initial_weight"] == 0.6
+    assert growth_output["opportunities"][1]["confirmation_weight"] == 0.4
+    assert growth_output["opportunities"][1]["current_cash_weight"] == 0.4
+
+    assert growth_output["audit"]["recalculates_signals"] is False
+    assert growth_output["audit"]["recalculates_ranking"] is False
+    assert growth_output["audit"]["executes_broker_orders"] is False
+
+    print(
+        "GROWTH — COLETA E VALIDAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 15. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
     # ========================================================
 
     unsupported_payload = {
@@ -1029,7 +1107,7 @@ def main():
 
     print(
         "INVESTMENT CIO COLLECTOR — "
-        "6 SISTEMAS — TESTE OK"
+        "7 SISTEMAS — TESTE OK"
     )
 
     print("=" * 70)
