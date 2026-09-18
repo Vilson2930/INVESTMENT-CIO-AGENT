@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       # ======================================================
       # CHECKOUT — INVESTMENT CIO AGENT
       # ======================================================
@@ -56,7 +57,7 @@ jobs:
           import urllib.request
 
           owner = "Vilson2930"
-          repo = "portfolio-acoes-americana-teste"
+          repo = "portifolio-a-oes-americana-teste"
           artifact_name = "portfolio-acoes-americana-agent-output"
 
           token = os.environ["GH_TOKEN"]
@@ -101,10 +102,14 @@ jobs:
 
           artifact_id = latest["id"]
 
-          print("Artifact encontrado:")
+          print("=" * 70)
+          print("ARTIFACT US EQUITIES ENCONTRADO")
+          print("=" * 70)
+          print("Repositório:", repo)
           print("Nome:", latest.get("name"))
           print("ID:", artifact_id)
           print("Criado em:", latest.get("created_at"))
+          print("=" * 70)
 
           with open(
               os.environ["GITHUB_ENV"],
@@ -129,7 +134,7 @@ jobs:
           import urllib.request
 
           owner = "Vilson2930"
-          repo = "portfolio-acoes-americana-teste"
+          repo = "portifolio-a-oes-americana-teste"
 
           artifact_id = os.environ[
               "US_EQUITIES_ARTIFACT_ID"
@@ -378,13 +383,12 @@ jobs:
           ) as file:
               output = json.load(file)
 
-          validation = (
-              validate_agent_output(
-                  output
-              )
+          validation = validate_agent_output(
+              output
           )
 
           if not validation["valid"]:
+
               print(
                   "ERROS DE VALIDAÇÃO:"
               )
@@ -399,14 +403,16 @@ jobs:
                   "não passou pelo schema universal."
               )
 
+          print("=" * 70)
           print(
-              "Output US Equities "
-              "validado com sucesso."
+              "OUTPUT US EQUITIES "
+              "VALIDADO COM SUCESSO"
           )
+          print("=" * 70)
           PY
 
       # ======================================================
-      # UPLOAD DO OUTPUT DO CIO
+      # UPLOAD DO OUTPUT DO INVESTMENT CIO
       # ======================================================
 
       - name: Upload Investment CIO US Equities output
