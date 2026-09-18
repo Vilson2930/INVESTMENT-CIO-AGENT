@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 SYSTEM_ID = "global_portfolio"
 SYSTEM_NAME = "COPIAULTIMOROB"
 SOURCE_SYSTEM = "COPIAULTIMOROB"
-ADAPTER_VERSION = "1.2"
+ADAPTER_VERSION = "1.4"
 
 
 def _to_float(value, default=None):
@@ -64,6 +64,96 @@ def _first_value(*values):
             return value
 
     return None
+
+
+
+def _normalize_real_payload_structure(payload):
+    """
+    Normaliza apenas a ESTRUTURA do payload real do COPIAULTIMOROB.
+
+    O exportador real organiza alguns dados em níveis aninhados:
+      macro.latest
+      allocation.summary
+      risk.survival
+      risk.stress
+      risk.risk_budget
+      risk.liquidity
+      risk.counterparty
+      external_ai_audit
+
+    O adapter histórico também aceita payloads achatados usados nos testes.
+    Esta função cria aliases canônicos sem recalcular, alterar ou substituir
+    qualquer decisão do sistema de origem.
+    """
+    normalized = dict(payload)
+
+    macro_root = _get_section(
+        payload,
+        "macro",
+        "macro_state",
+        "macro_summary",
+    )
+
+    macro_latest = (
+        macro_root.get("latest")
+        if isinstance(macro_root.get("latest"), dict)
+        else {}
+    )
+
+    if macro_latest:
+        normalized["macro"] = {
+            **macro_root,
+            **macro_latest,
+        }
+
+    allocation_root = _get_section(
+        payload,
+        "allocation",
+        "allocation_advisor",
+        "allocation_summary",
+    )
+
+    allocation_summary = (
+        allocation_root.get("summary")
+        if isinstance(allocation_root.get("summary"), dict)
+        else {}
+    )
+
+    if allocation_summary:
+        normalized["allocation"] = {
+            **allocation_root,
+            **allocation_summary,
+        }
+
+    risk_root = _get_section(
+        payload,
+        "risk",
+    )
+
+    if risk_root:
+        section_map = {
+            "survival": "survival",
+            "stress": "stress",
+            "risk_budget": "risk_budget",
+            "liquidity": "liquidity",
+            "counterparty": "counterparty",
+        }
+
+        for target_name, source_name in section_map.items():
+            nested_section = risk_root.get(source_name)
+
+            if isinstance(nested_section, dict):
+                normalized[target_name] = nested_section
+
+    external_ai_audit = _get_section(
+        payload,
+        "external_ai_audit",
+    )
+
+    if external_ai_audit:
+        normalized["nvidia_audit"] = external_ai_audit
+
+    return normalized
 
 
 def _extract_warnings(payload):
@@ -306,6 +396,10 @@ def build_copiaultimorob_agent_output(payload):
             f"Esperado: {SOURCE_SYSTEM}. "
             f"Recebido: {source_system}"
         )
+
+    # Normaliza a estrutura real exportada pelo COPIAULTIMOROB.
+    # Não recalcula nenhum indicador e não altera decisões.
+    payload = _normalize_real_payload_structure(payload)
 
     generated_at = payload.get("generated_at")
 
