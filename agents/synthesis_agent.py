@@ -25,7 +25,163 @@
 from datetime import datetime, timezone
 
 
-SYNTHESIS_VERSION = "1.1"
+SYNTHESIS_VERSION = "2.0"
+
+
+# ============================================================
+# REGISTRO DOS SETE SISTEMAS E CAMADAS FUNCIONAIS
+# ============================================================
+
+SYSTEM_REGISTRY = {
+    "sp500_cycle": {
+        "canonical_name": "SP500_CYCLE_ATLAS",
+        "layer": "REGIME",
+        "aliases": {"SP500_CYCLE_ATLAS"},
+    },
+    "global_portfolio": {
+        "canonical_name": "COPIAULTIMOROB",
+        "layer": "GLOBAL_RISK",
+        "aliases": {"COPIAULTIMOROB"},
+    },
+    "us_equities": {
+        "canonical_name": "US_EQUITIES",
+        "layer": "ASSET_SELECTION",
+        "aliases": {
+            "US_EQUITIES",
+            "PORTFOLIO_ACOES_AMERICANA",
+            "PORTFOLIO ACOES AMERICANA",
+            "PORTFOLIO AÇÕES AMERICANA",
+            "PORTFOLIO-ACOES-AMERICANA-TESTE",
+            "PORTFOLIO-AÇÕES-AMERICANA-TESTE",
+        },
+    },
+    "b3_equities": {
+        "canonical_name": "B3_EQUITIES",
+        "layer": "ASSET_SELECTION",
+        "aliases": {
+            "B3_EQUITIES",
+            "PORTFOLIO_B3_OPERATIONAL",
+            "PORTFOLIO-B3-OPERATIONAL",
+        },
+    },
+    "fii": {
+        "canonical_name": "FII",
+        "layer": "ASSET_SELECTION",
+        "aliases": {
+            "FII",
+            "FII_INSTITUTIONAL_SCANNER",
+            "FII INSTITUTIONAL SCANNER",
+            "FII-SCANNER",
+        },
+    },
+    "ai_infrastructure": {
+        "canonical_name": "AI_INFRASTRUCTURE",
+        "layer": "OPPORTUNITY_SCANNER",
+        "aliases": {
+            "AI_INFRASTRUCTURE",
+            "AI_INFRASTRUCTURE_SCANNER",
+            "AI INFRASTRUCTURE SCANNER",
+        },
+    },
+    "growth": {
+        "canonical_name": "GROWTH",
+        "layer": "OPPORTUNITY_SCANNER",
+        "aliases": {
+            "GROWTH",
+            "GROWTH_OPPORTUNITY_ENGINE",
+            "GROWTH OPPORTUNITY ENGINE",
+        },
+    },
+}
+
+EXPECTED_SYSTEM_IDS = tuple(SYSTEM_REGISTRY.keys())
+
+
+def _identify_registered_system(output):
+    """
+    Identifica um output padronizado sem recalcular ou reinterpretar sinais.
+
+    Prioridade:
+    1. system_id padronizado pelo adapter;
+    2. system_name / aliases conhecidos.
+    """
+    system_id = str(output.get("system_id") or "").strip()
+    if system_id in SYSTEM_REGISTRY:
+        return system_id
+
+    system_name = _normalize_text(output.get("system_name"))
+    if not system_name:
+        return None
+
+    for registered_id, config in SYSTEM_REGISTRY.items():
+        aliases = {_normalize_text(value) for value in config["aliases"]}
+        if system_name in aliases:
+            return registered_id
+
+    return None
+
+
+def _extract_generic_evidence(output, registered_id):
+    """
+    Extrai somente evidências já produzidas pelo adapter.
+    Não cria score, não reordena ativos e não altera sinais.
+    """
+    decision = _safe_dict(output.get("decision"))
+    risk = _safe_dict(output.get("risk"))
+    opportunities = _safe_list(output.get("opportunities"))
+    positions = _safe_list(output.get("positions"))
+
+    return {
+        "system_id": registered_id,
+        "system_name": output.get("system_name"),
+        "layer": SYSTEM_REGISTRY[registered_id]["layer"],
+        "status": output.get("status"),
+        "signal": decision.get("signal"),
+        "confidence": decision.get("confidence"),
+        "summary": decision.get("summary"),
+        "risk_level": risk.get("level"),
+        "risk_score": risk.get("score"),
+        "risk_alerts": _flatten_alerts(risk.get("alerts", [])),
+        "positions_count": len(positions),
+        "opportunities_count": len(opportunities),
+        # Cópias rasas preservando exatamente a ordem recebida.
+        "positions": list(positions),
+        "opportunities": list(opportunities),
+    }
+
+
+def _build_system_layers(outputs_by_id):
+    layers = {
+        "REGIME": [],
+        "GLOBAL_RISK": [],
+        "ASSET_SELECTION": [],
+        "OPPORTUNITY_SCANNER": [],
+    }
+
+    for registered_id in EXPECTED_SYSTEM_IDS:
+        output = outputs_by_id.get(registered_id)
+        if output is None:
+            continue
+
+        evidence = _extract_generic_evidence(output, registered_id)
+        layers[evidence["layer"]].append(evidence)
+
+    return layers
+
+
+def _build_all_system_alerts(outputs_by_id):
+    alerts = []
+
+    for registered_id in EXPECTED_SYSTEM_IDS:
+        output = outputs_by_id.get(registered_id)
+        if output is None:
+            continue
+
+        risk = _safe_dict(output.get("risk"))
+        for alert in _flatten_alerts(risk.get("alerts", [])):
+            alerts.append(f"{output.get('system_name')}: {alert}")
+
+    return _unique_list(alerts)
 
 
 # ============================================================
@@ -983,58 +1139,165 @@ def build_synthesis(
 
 
 # ============================================================
-# INTERFACE GENÉRICA
+# INTERFACE GENÉRICA — SETE SISTEMAS
 # ============================================================
 
 def synthesize_outputs(outputs):
+    """
+    Síntese institucional V2.
+
+    Compatibilidade:
+    - SP500_CYCLE_ATLAS e COPIAULTIMOROB continuam sendo a base
+      da comparação macro/risco já validada na versão 1.1.
+    - Os outros cinco sistemas entram como evidências nas suas
+      camadas funcionais, sem serem convertidos em postura macro.
+    - A função continua aceitando apenas os dois motores-base,
+      preservando compatibilidade com testes e integrações antigas.
+    """
 
     if not isinstance(outputs, list):
-
         raise SynthesisError(
             "outputs deve ser uma lista."
         )
 
-    sp500_output = None
-    global_output = None
+    outputs_by_id = {}
+    unknown_systems = []
 
     for output in outputs:
-
         if not isinstance(output, dict):
             continue
 
-        system_name = output.get(
-            "system_name"
-        )
+        _validate_system_output(output)
 
-        if (
-            system_name
-            == "SP500_CYCLE_ATLAS"
-        ):
+        registered_id = _identify_registered_system(output)
 
-            sp500_output = output
+        if registered_id is None:
+            unknown_systems.append(
+                output.get("system_name")
+                or output.get("system_id")
+                or "UNKNOWN"
+            )
+            continue
 
-        elif (
-            system_name
-            == "COPIAULTIMOROB"
-        ):
+        if registered_id in outputs_by_id:
+            raise SynthesisError(
+                "Output duplicado para o sistema "
+                f"'{registered_id}'."
+            )
 
-            global_output = output
+        outputs_by_id[registered_id] = output
+
+    sp500_output = outputs_by_id.get("sp500_cycle")
+    global_output = outputs_by_id.get("global_portfolio")
 
     if sp500_output is None:
-
         raise SynthesisError(
             "Output do SP500_CYCLE_ATLAS "
             "não encontrado."
         )
 
     if global_output is None:
-
         raise SynthesisError(
             "Output do COPIAULTIMOROB "
             "não encontrado."
         )
 
-    return build_synthesis(
+    # Mantém integralmente a lógica macro/risco já validada.
+    synthesis = build_synthesis(
         sp500_output,
         global_output
     )
+
+    # A versão final desta interface é V2, embora build_synthesis
+    # permaneça retrocompatível quando chamado diretamente.
+    synthesis["synthesis_version"] = SYNTHESIS_VERSION
+
+    systems_present = [
+        system_id
+        for system_id in EXPECTED_SYSTEM_IDS
+        if system_id in outputs_by_id
+    ]
+
+    systems_missing = [
+        system_id
+        for system_id in EXPECTED_SYSTEM_IDS
+        if system_id not in outputs_by_id
+    ]
+
+    system_layers = _build_system_layers(
+        outputs_by_id
+    )
+
+    synthesis["systems_analyzed"] = [
+        outputs_by_id[system_id].get("system_name")
+        for system_id in systems_present
+    ]
+
+    synthesis["systems_registry"] = {
+        "expected_count": len(EXPECTED_SYSTEM_IDS),
+        "received_count": len(systems_present),
+        "systems_present": systems_present,
+        "systems_missing": systems_missing,
+        "unknown_systems": unknown_systems,
+        "all_seven_present": (
+            len(systems_present) == len(EXPECTED_SYSTEM_IDS)
+        ),
+    }
+
+    synthesis["layers"] = system_layers
+
+    # Mantém a comparação SP500 x COPIA como comparação de postura.
+    # Seleção e scanners NÃO são transformados em RISK_SEEKING /
+    # DEFENSIVE / NEUTRAL.
+    synthesis["layer_policy"] = {
+        "REGIME": (
+            "Contexto de ciclo/regime. "
+            "Não altera sinais de outros motores."
+        ),
+        "GLOBAL_RISK": (
+            "Contexto global de risco e restrições. "
+            "Não reclassifica oportunidades."
+        ),
+        "ASSET_SELECTION": (
+            "Seleção e sinais específicos dos mercados. "
+            "Não participa como voto de postura macro."
+        ),
+        "OPPORTUNITY_SCANNER": (
+            "Oportunidades e timing específicos. "
+            "Não participa como voto de postura macro."
+        ),
+    }
+
+    # Consolida alertas já existentes nos sete outputs.
+    # Não cria novo score de risco.
+    all_alerts = _build_all_system_alerts(
+        outputs_by_id
+    )
+
+    existing_alerts = _safe_list(
+        _safe_dict(synthesis.get("risk")).get("alerts")
+    )
+
+    synthesis["risk"]["alerts"] = _unique_list(
+        existing_alerts + all_alerts
+    )
+
+    synthesis["evidence"] = {
+        "asset_selection": (
+            system_layers["ASSET_SELECTION"]
+        ),
+        "opportunity_scanners": (
+            system_layers["OPPORTUNITY_SCANNER"]
+        ),
+    }
+
+    synthesis["policy"].update({
+        "seven_system_registry_enabled": True,
+        "selection_systems_used_as_macro_votes": False,
+        "opportunity_systems_used_as_macro_votes": False,
+        "source_order_preserved": True,
+        "source_signals_preserved": True,
+        "new_scores_created": False,
+    })
+
+    return synthesis
