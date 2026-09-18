@@ -12,11 +12,15 @@
 # 4. Conversão para o contrato universal.
 # 5. Preservação das decisões dos robôs.
 # 6. Preservação dos principais dados de risco.
-# 7. Proteção contra sistemas desconhecidos.
+# 7. Integração de US Equities.
+# 8. Integração de B3 Equities.
+# 9. Proteção contra sistemas desconhecidos.
 #
 # Sistemas atualmente testados:
 # - SP500_CYCLE_ATLAS
 # - COPIAULTIMOROB
+# - PORTFOLIO_ACOES_AMERICANA
+# - PORTFOLIO_B3_OPERATIONAL
 #
 # ============================================================
 
@@ -26,6 +30,14 @@ from agents.collector import (
     get_registered_systems,
     is_system_supported,
     UnsupportedSystemError,
+)
+
+from tests.test_us_equities_adapter import (
+    build_sample_payload as build_us_equities_payload,
+)
+
+from tests.test_b3_equities_adapter import (
+    build_sample_raw as build_b3_equities_payload,
 )
 
 
@@ -408,31 +420,28 @@ def main():
     print("=" * 70)
 
     # ========================================================
-    # 1. REGISTRO DOS SISTEMAS
+    # 1. REGISTRO DOS QUATRO SISTEMAS
     # ========================================================
 
     registered = get_registered_systems()
 
-    assert (
-        "SP500_CYCLE_ATLAS"
-        in registered
-    )
+    expected_systems = [
+        "SP500_CYCLE_ATLAS",
+        "COPIAULTIMOROB",
+        "PORTFOLIO_ACOES_AMERICANA",
+        "PORTFOLIO_B3_OPERATIONAL",
+    ]
 
-    assert (
-        "COPIAULTIMOROB"
-        in registered
-    )
+    for system in expected_systems:
 
-    assert is_system_supported(
-        "SP500_CYCLE_ATLAS"
-    ) is True
+        assert system in registered
 
-    assert is_system_supported(
-        "COPIAULTIMOROB"
-    ) is True
+        assert is_system_supported(
+            system
+        ) is True
 
     print(
-        "REGISTRO DOS DOIS SISTEMAS: OK"
+        "REGISTRO DOS QUATRO SISTEMAS: OK"
     )
 
     # ========================================================
@@ -621,7 +630,208 @@ def main():
     )
 
     # ========================================================
-    # 6. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
+    # 6. US EQUITIES — IDENTIFICAÇÃO
+    # ========================================================
+
+    us_payload = (
+        build_us_equities_payload()
+    )
+
+    us_source = identify_source_system(
+        us_payload
+    )
+
+    assert us_source == (
+        "PORTFOLIO_ACOES_AMERICANA"
+    )
+
+    print(
+        "US EQUITIES — IDENTIFICAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 7. US EQUITIES — COLLECTOR
+    # ========================================================
+
+    us_output = collect_payload(
+        us_payload
+    )
+
+    assert us_output[
+        "system_id"
+    ] == "us_equities"
+
+    assert us_output[
+        "system_name"
+    ] == (
+        "portfolio-acoes-americana-teste"
+    )
+
+    assert us_output[
+        "status"
+    ] == "OK"
+
+    assert us_output[
+        "decision"
+    ]["signal"] == (
+        "MULTI_ASSET_SELECTION"
+    )
+
+    assert us_output[
+        "decision"
+    ]["confidence"] is None
+
+    assert us_output[
+        "metrics"
+    ]["portfolio_size"] == 15
+
+    assert us_output[
+        "metrics"
+    ]["number_of_sectors"] == 3
+
+    assert us_output[
+        "metrics"
+    ]["total_weight"] == 1.0
+
+    assert len(
+        us_output["positions"]
+    ) == 15
+
+    us_signals = {
+        position["ticker"]:
+            position["entry_signal"]
+        for position
+        in us_output["positions"]
+    }
+
+    assert (
+        us_signals["SNDK"]
+        == "ENTRADA FORTE"
+    )
+
+    assert (
+        us_signals["HUBB"]
+        == "ENTRADA"
+    )
+
+    assert (
+        us_signals["DXCM"]
+        == "AGUARDAR"
+    )
+
+    assert (
+        us_signals["PLTR"]
+        == "NÃO COMPRAR AGORA"
+    )
+
+    print(
+        "US EQUITIES — "
+        "COLETA E VALIDAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 8. B3 EQUITIES — IDENTIFICAÇÃO
+    # ========================================================
+
+    b3_payload = (
+        build_b3_equities_payload()
+    )
+
+    b3_source = identify_source_system(
+        b3_payload
+    )
+
+    assert b3_source == (
+        "PORTFOLIO_B3_OPERATIONAL"
+    )
+
+    print(
+        "B3 EQUITIES — IDENTIFICAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 9. B3 EQUITIES — COLLECTOR
+    # ========================================================
+
+    b3_output = collect_payload(
+        b3_payload
+    )
+
+    assert b3_output[
+        "system_id"
+    ] == "b3_equities"
+
+    assert b3_output[
+        "system_name"
+    ] == "Portfolio-B3-Operational"
+
+    assert b3_output[
+        "status"
+    ] == "WARNING"
+
+    assert b3_output[
+        "decision"
+    ]["signal"] == (
+        "PORTFOLIO_WITH_ASSET_SIGNALS"
+    )
+
+    assert b3_output[
+        "decision"
+    ]["confidence"] is None
+
+    assert b3_output[
+        "metrics"
+    ]["number_of_stocks"] == 12
+
+    assert b3_output[
+        "metrics"
+    ]["number_of_sectors"] == 4
+
+    assert len(
+        b3_output["positions"]
+    ) == 12
+
+    assert abs(
+        b3_output[
+            "metrics"
+        ]["portfolio_weight_sum"]
+        - 1.0
+    ) < 1e-9
+
+    b3_signals = {
+        position["ticker"]:
+            position["decision"]["signal"]
+        for position
+        in b3_output["positions"]
+    }
+
+    assert (
+        b3_signals["RNEW4"]
+        == "COMPRA"
+    )
+
+    assert (
+        b3_signals["TOTS3"]
+        == "COMPRA"
+    )
+
+    assert (
+        b3_signals["AVLL3"]
+        == "EVITAR"
+    )
+
+    assert (
+        b3_signals["OBTC3"]
+        == "SEM CONFIRMAÇÃO"
+    )
+
+    print(
+        "B3 EQUITIES — "
+        "COLETA E VALIDAÇÃO: OK"
+    )
+
+    # ========================================================
+    # 10. PROTEÇÃO CONTRA SISTEMA DESCONHECIDO
     # ========================================================
 
     unsupported_payload = {
@@ -664,7 +874,7 @@ def main():
     print("=" * 70)
     print(
         "INVESTMENT CIO COLLECTOR — "
-        "SP500 + COPIAULTIMOROB — TESTE OK"
+        "4 SISTEMAS — TESTE OK"
     )
     print("=" * 70)
 
