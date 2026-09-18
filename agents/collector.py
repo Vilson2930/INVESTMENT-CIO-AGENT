@@ -39,6 +39,10 @@ from adapters.b3_equities_adapter import (
     adapt_b3_equities_output,
 )
 
+from adapters.ai_infrastructure_adapter import (
+    adapt_ai_infrastructure_output,
+)
+
 from agents.validator import (
     validate_agent_output,
 )
@@ -64,6 +68,10 @@ ADAPTER_REGISTRY = {
 
     "PORTFOLIO_B3_OPERATIONAL": (
         adapt_b3_equities_output
+    ),
+
+    "AI_INFRASTRUCTURE_SCANNER": (
+        adapt_ai_infrastructure_output
     ),
 
 }
