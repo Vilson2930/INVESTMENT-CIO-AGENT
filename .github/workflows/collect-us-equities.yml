@@ -1,13 +1,16 @@
-name: Collect US Equities
+name: Collect B3 Equities
 
 on:
   workflow_dispatch:
 
 jobs:
-  collect:
+
+  collect-b3:
+
     runs-on: ubuntu-latest
 
     steps:
+
       # ======================================================
       # CHECKOUT — INVESTMENT CIO AGENT
       # ======================================================
@@ -39,14 +42,14 @@ jobs:
 
       - name: Prepare directories
         run: |
-          mkdir -p downloaded_us_equities
+          mkdir -p downloaded_b3
           mkdir -p outputs
 
       # ======================================================
-      # LOCALIZAR ÚLTIMO ARTIFACT DO ROBÔ
+      # LOCALIZAR ÚLTIMO ARTIFACT DO PORTFOLIO B3
       # ======================================================
 
-      - name: Find latest US Equities artifact
+      - name: Find latest Portfolio B3 artifact
         env:
           GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
         run: |
@@ -56,8 +59,8 @@ jobs:
           import urllib.request
 
           owner = "Vilson2930"
-          repo = "portifolio-a-oes-americana-teste"
-          artifact_name = "portfolio-acoes-americana-agent-output"
+          repo = "Portfolio-B3-Operational"
+          artifact_name = "portfolio-b3-agent-output"
 
           token = os.environ["GH_TOKEN"]
 
@@ -76,37 +79,71 @@ jobs:
               },
           )
 
-          with urllib.request.urlopen(request) as response:
+          with urllib.request.urlopen(
+              request
+          ) as response:
               payload = json.load(response)
 
           artifacts = [
               artifact
-              for artifact in payload.get("artifacts", [])
-              if artifact.get("name") == artifact_name
-              and not artifact.get("expired", False)
+              for artifact
+              in payload.get("artifacts", [])
+              if (
+                  artifact.get("name")
+                  == artifact_name
+                  and not artifact.get(
+                      "expired",
+                      False,
+                  )
+              )
           ]
 
           if not artifacts:
               raise RuntimeError(
-                  "Nenhum artifact válido encontrado com o nome: "
+                  "Nenhum artifact válido "
+                  "encontrado com o nome: "
                   + artifact_name
               )
 
           artifacts.sort(
-              key=lambda item: item.get("created_at", ""),
+              key=lambda item:
+                  item.get(
+                      "created_at",
+                      "",
+                  ),
               reverse=True,
           )
 
           latest = artifacts[0]
+
           artifact_id = latest["id"]
 
           print("=" * 70)
-          print("ARTIFACT US EQUITIES ENCONTRADO")
+          print(
+              "ARTIFACT PORTFOLIO B3 ENCONTRADO"
+          )
           print("=" * 70)
-          print("Repositório:", repo)
-          print("Nome:", latest.get("name"))
-          print("ID:", artifact_id)
-          print("Criado em:", latest.get("created_at"))
+
+          print(
+              "Repositório:",
+              repo,
+          )
+
+          print(
+              "Nome:",
+              latest.get("name"),
+          )
+
+          print(
+              "ID:",
+              artifact_id,
+          )
+
+          print(
+              "Criado em:",
+              latest.get("created_at"),
+          )
+
           print("=" * 70)
 
           with open(
@@ -114,48 +151,51 @@ jobs:
               "a",
               encoding="utf-8",
           ) as env_file:
+
               env_file.write(
-                  f"US_EQUITIES_ARTIFACT_ID={artifact_id}\n"
+                  f"B3_ARTIFACT_ID={artifact_id}\n"
               )
+
           PY
 
       # ======================================================
       # BAIXAR ARTIFACT
+      # MESMO MÉTODO JÁ VALIDADO EM US EQUITIES
       # ======================================================
 
-      - name: Download US Equities artifact
+      - name: Download Portfolio B3 artifact
         env:
           GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
         run: |
-          echo "Baixando artifact ID: $US_EQUITIES_ARTIFACT_ID"
+          echo "Baixando artifact ID: $B3_ARTIFACT_ID"
 
           gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/Vilson2930/portifolio-a-oes-americana-teste/actions/artifacts/${US_EQUITIES_ARTIFACT_ID}/zip" \
-            > downloaded_us_equities/artifact.zip
+            "/repos/Vilson2930/Portfolio-B3-Operational/actions/artifacts/${B3_ARTIFACT_ID}/zip" \
+            > downloaded_b3/artifact.zip
 
-          test -s downloaded_us_equities/artifact.zip
+          test -s downloaded_b3/artifact.zip
 
           echo "Artifact baixado com sucesso:"
-          ls -lh downloaded_us_equities/artifact.zip
+          ls -lh downloaded_b3/artifact.zip
 
       # ======================================================
       # EXTRAIR ARTIFACT
       # ======================================================
 
-      - name: Extract US Equities artifact
+      - name: Extract Portfolio B3 artifact
         run: |
           python - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
 
           zip_path = Path(
-              "downloaded_us_equities/artifact.zip"
+              "downloaded_b3/artifact.zip"
           )
 
           extract_dir = Path(
-              "downloaded_us_equities/extracted"
+              "downloaded_b3/extracted"
           )
 
           extract_dir.mkdir(
@@ -163,44 +203,62 @@ jobs:
               exist_ok=True,
           )
 
-          with ZipFile(zip_path, "r") as archive:
-              archive.extractall(extract_dir)
+          with ZipFile(
+              zip_path,
+              "r",
+          ) as archive:
 
-          print("Arquivos extraídos:")
+              archive.extractall(
+                  extract_dir
+              )
+
+          print(
+              "Arquivos extraídos:"
+          )
 
           for path in extract_dir.rglob("*"):
+
               if path.is_file():
-                  print("-", path)
+
+                  print(
+                      "-",
+                      path,
+                  )
+
           PY
 
       # ======================================================
       # LOCALIZAR agent_output_raw.json
       # ======================================================
 
-      - name: Locate raw agent output
+      - name: Locate raw B3 agent output
         run: |
           python - <<'PY'
           import os
           from pathlib import Path
 
           base = Path(
-              "downloaded_us_equities/extracted"
+              "downloaded_b3/extracted"
           )
 
           matches = list(
-              base.rglob("agent_output_raw.json")
+              base.rglob(
+                  "agent_output_raw.json"
+              )
           )
 
           if not matches:
+
               raise FileNotFoundError(
-                  "agent_output_raw.json não encontrado "
-                  "dentro do artifact."
+                  "agent_output_raw.json "
+                  "não encontrado dentro "
+                  "do artifact do Portfolio B3."
               )
 
           raw_file = matches[0]
 
           print(
-              "JSON RAW encontrado:",
+              "JSON RAW B3 encontrado:",
               raw_file,
           )
 
@@ -209,26 +267,30 @@ jobs:
               "a",
               encoding="utf-8",
           ) as env_file:
+
               env_file.write(
-                  f"US_EQUITIES_RAW_FILE={raw_file}\n"
+                  f"B3_RAW_FILE={raw_file}\n"
               )
+
           PY
 
       # ======================================================
       # PROCESSAR PELO COLLECTOR
       # ======================================================
 
-      - name: Process real US Equities output
+      - name: Process real Portfolio B3 output
         run: |
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          from agents.collector import collect_file
+          from agents.collector import (
+              collect_file,
+          )
 
           raw_file = os.environ[
-              "US_EQUITIES_RAW_FILE"
+              "B3_RAW_FILE"
           ]
 
           output = collect_file(
@@ -236,7 +298,8 @@ jobs:
           )
 
           output_path = Path(
-              "outputs/us_equities_agent_output.json"
+              "outputs/"
+              "b3_equities_agent_output.json"
           )
 
           output_path.parent.mkdir(
@@ -249,26 +312,36 @@ jobs:
               "w",
               encoding="utf-8",
           ) as file:
+
               json.dump(
                   output,
                   file,
                   ensure_ascii=False,
                   indent=2,
+                  allow_nan=False,
               )
 
           print("=" * 70)
-          print("INVESTMENT CIO AGENT")
-          print("COLETA REAL — US EQUITIES")
+          print(
+              "INVESTMENT CIO AGENT"
+          )
+          print(
+              "COLETA REAL — PORTFOLIO B3"
+          )
           print("=" * 70)
 
           print(
               "Sistema:",
-              output.get("system_name"),
+              output.get(
+                  "system_name"
+              ),
           )
 
           print(
               "Status:",
-              output.get("status"),
+              output.get(
+                  "status"
+              ),
           )
 
           decision = output.get(
@@ -277,8 +350,10 @@ jobs:
           )
 
           print(
-              "Sinal:",
-              decision.get("signal"),
+              "Sinal global:",
+              decision.get(
+                  "signal"
+              ),
           )
 
           metrics = output.get(
@@ -288,32 +363,30 @@ jobs:
 
           print(
               "Ações:",
-              metrics.get("portfolio_size"),
+              metrics.get(
+                  "number_of_stocks"
+              ),
           )
 
           print(
               "Setores:",
-              metrics.get("number_of_sectors"),
+              metrics.get(
+                  "number_of_sectors"
+              ),
           )
 
           print(
-              "Entrada Forte:",
-              metrics.get("entry_strong"),
+              "Sinais por ativo:",
+              metrics.get(
+                  "asset_signal_counts"
+              ),
           )
 
           print(
-              "Entrada:",
-              metrics.get("entry"),
-          )
-
-          print(
-              "Aguardar:",
-              metrics.get("wait"),
-          )
-
-          print(
-              "Não comprar agora:",
-              metrics.get("do_not_buy_now"),
+              "Peso total:",
+              metrics.get(
+                  "portfolio_weight_sum"
+              ),
           )
 
           print(
@@ -322,13 +395,14 @@ jobs:
           )
 
           print("=" * 70)
+
           PY
 
       # ======================================================
       # VALIDAR OUTPUT UNIVERSAL
       # ======================================================
 
-      - name: Validate universal output
+      - name: Validate universal B3 output
         run: |
           python - <<'PY'
           import json
@@ -339,7 +413,7 @@ jobs:
 
           path = (
               "outputs/"
-              "us_equities_agent_output.json"
+              "b3_equities_agent_output.json"
           )
 
           with open(
@@ -347,10 +421,15 @@ jobs:
               "r",
               encoding="utf-8",
           ) as file:
-              output = json.load(file)
 
-          validation = validate_agent_output(
-              output
+              output = json.load(
+                  file
+              )
+
+          validation = (
+              validate_agent_output(
+                  output
+              )
           )
 
           if not validation["valid"]:
@@ -362,29 +441,34 @@ jobs:
               for error in validation[
                   "errors"
               ]:
-                  print(error)
+
+                  print(
+                      error
+                  )
 
               raise RuntimeError(
-                  "Output US Equities "
-                  "não passou pelo schema universal."
+                  "Output Portfolio B3 "
+                  "não passou pelo "
+                  "schema universal."
               )
 
           print("=" * 70)
           print(
-              "OUTPUT US EQUITIES "
+              "OUTPUT PORTFOLIO B3 "
               "VALIDADO COM SUCESSO"
           )
           print("=" * 70)
+
           PY
 
       # ======================================================
       # UPLOAD DO OUTPUT DO INVESTMENT CIO
       # ======================================================
 
-      - name: Upload Investment CIO US Equities output
+      - name: Upload Investment CIO B3 output
         uses: actions/upload-artifact@v4
         with:
-          name: investment-cio-us-equities-output
-          path: outputs/us_equities_agent_output.json
+          name: investment-cio-b3-equities-output
+          path: outputs/b3_equities_agent_output.json
           if-no-files-found: error
           retention-days: 30
