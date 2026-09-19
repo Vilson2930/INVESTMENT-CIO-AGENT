@@ -1607,6 +1607,30 @@ def validate_ai_analysis_semantics(
 
 
 # ============================================================
+# SYSTEM PROMPT LIMPO PARA RECONSTRUÇÃO SEMÂNTICA — V1.5
+# ============================================================
+
+SEMANTIC_CORRECTION_SYSTEM_PROMPT = """
+Você é a camada de reconstrução semântica do INVESTMENT CIO AI.
+
+Reconstrua a análise usando somente o contexto estruturado fornecido.
+
+Regras obrigatórias:
+- não invente fatos, causas, relações, estatísticas ou recomendações;
+- preserve sinais, scores, rankings, decisões, restrições e governança;
+- preserve o escopo exato de cada evidência;
+- não transforme metodologia em causa ou timing;
+- não transforme status em causa;
+- não transforme coexistência em convergência;
+- não derive efeitos operacionais não explicitados pela fonte;
+- não transforme descrição em obrigação ou recomendação própria;
+- mantenha a decisão final humana;
+- produza somente a nova análise final;
+- não comente o processo de correção, rejeição ou validação.
+""".strip()
+
+
+# ============================================================
 # AUTOCORREÇÃO SEMÂNTICA CONTROLADA — V1.5
 # ============================================================
 
@@ -1713,21 +1737,18 @@ def _extract_semantic_violation_codes(
 
 
 def _build_semantic_correction_prompt(
-    original_prompt: str,
+    context: dict,
     rejected_analysis: str,
     validation_error: Exception,
 ) -> str:
     """
-    Solicita UMA nova geração integral baseada no contexto original.
+    Solicita UMA reconstrução integral usando somente o contexto
+    estruturado original.
 
-    Regra crítica:
-    a resposta rejeitada e os detalhes textuais da violação NÃO são
-    reenviados ao modelo. O reparo recebe apenas os CÓDIGOS das classes
-    de violação e reconstrói a análise a partir do prompt/contexto
-    original.
-
-    `rejected_analysis` permanece na assinatura para compatibilidade
-    interna, mas seu conteúdo não é interpolado no prompt.
+    Não reenvia:
+    - a resposta rejeitada;
+    - os detalhes literais da violação;
+    - o prompt original com exemplos linguísticos.
     """
     del rejected_analysis
 
@@ -1743,95 +1764,61 @@ def _build_semantic_correction_prompt(
     else:
         violation_block = "- SEMANTIC_FIDELITY_VIOLATION"
 
+    context_json = json.dumps(
+        context,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+
     return f"""
-A geração anterior não passou pela barreira de fidelidade semântica
-do INVESTMENT CIO AI.
+A geração anterior não passou pela validação semântica.
 
 CLASSES DE VIOLAÇÃO DETECTADAS:
 {violation_block}
 
-IMPORTANTE:
+REGRAS OBRIGATÓRIAS PARA A RECONSTRUÇÃO:
 
-Você NÃO receberá a redação rejeitada nem os trechos textuais que
-causaram a rejeição.
+Reconstrua a análise integral do zero usando SOMENTE o CONTEXTO
+ESTRUTURADO ORIGINAL abaixo.
 
-Não tente reconstruir, citar, explicar ou comentar a resposta anterior.
-
-Faça uma NOVA análise integral exclusivamente a partir do
-PROMPT ORIGINAL E CONTEXTO fornecidos abaixo.
+A redação rejeitada não é fornecida. Não tente reconstruí-la, citá-la,
+resumi-la, explicá-la ou comentá-la.
 
 A resposta deve conter SOMENTE a nova análise final.
 
-Não inclua:
-- explicação sobre a correção;
-- comentário sobre a rejeição anterior;
-- comentário sobre a barreira;
-- nomes das classes de violação;
-- metacomentário de conformidade além da declaração final já exigida
-  pelo prompt original.
+- Para classe distributiva, não crie distribuição, proporção,
+  frequência ou predominância sem evidência numérica explícita.
+- Para classe de consequência operacional, descreva somente fatos de
+  origem explicitamente disponíveis e não derive efeitos operacionais
+  que não estejam registrados no contexto e atribuídos à fonte.
+- Para classe prescritiva, use descrição neutra dos fatos de origem e
+  não transforme fatos, estados ou restrições em obrigação, orientação
+  ou recomendação própria.
 
-REGRAS DE RECONSTRUÇÃO:
-
-1. Se estiver presente a classe
-   UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER:
-   - não crie distribuição, proporção, frequência ou predominância
-     que não esteja explicitamente demonstrada no contexto;
-   - descreva fatos individualmente ou apenas sua existência;
-   - preserve exatamente o universo ao qual cada fato se aplica.
-
-2. Se estiver presente a classe
-   UNSUPPORTED_OPERATIONAL_CONSEQUENCE:
-   - ao tratar restrições, descreva somente existência, origem,
-     estado, código e severidade explicitamente disponíveis;
-   - mencione consequência operacional somente quando ela estiver
-     literalmente sustentada pelo contexto e atribuída à fonte;
-   - não derive ação, bloqueio, redução, aumento, entrada, saída,
-     espera, rebalanceamento ou alteração de exposição por inferência.
-
-3. Se estiver presente a classe
-   UNSUPPORTED_PRESCRIPTIVE_LANGUAGE:
-   - use descrição neutra dos fatos de origem;
-   - não transforme fatos, estados ou restrições em obrigação,
-     orientação ou recomendação própria;
-   - preserve a decisão final humana.
-
-REGRAS GERAIS OBRIGATÓRIAS:
+REGRAS GERAIS:
 - preserve exatamente as 11 seções exigidas;
-- use exclusivamente o contexto original;
-- não acrescente fatos;
-- não acrescente causas;
-- não acrescente relações não sustentadas;
-- não acrescente recomendações;
-- não altere sinais;
-- não altere scores;
-- não altere rankings;
-- não altere decisões dos sistemas;
-- não transforme restrição em consequência operacional inferida;
+- use exclusivamente o contexto estruturado original;
+- não acrescente fatos, causas, relações ou recomendações;
+- não altere sinais, scores, rankings ou decisões;
+- não transforme restrição em efeito operacional inferido;
 - não transforme descrição em prescrição;
-- não transforme metodologia em timing;
-- não transforme metodologia em causa;
+- não transforme metodologia em timing ou causa;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
 - não transforme coexistência em convergência;
 - não crie quantificação distributiva sem evidência explícita;
 - preserve Kill Switch, Hard Block, restrições e governança exatamente
   como aparecem no contexto;
-- preserve a decisão final humana.
+- preserve a decisão final humana;
+- não explique o processo de correção, rejeição ou validação.
 
 Quando uma interpretação mais ampla não estiver explicitamente
 sustentada, use formulação estritamente descritiva e de menor alcance
 semântico.
 
-Antes de responder, faça uma verificação silenciosa:
-- a resposta foi reconstruída apenas do contexto original;
-- nenhuma consequência operacional foi inferida;
-- nenhuma prescrição própria foi criada;
-- nenhuma distribuição não demonstrada foi criada;
-- nenhum sinal, score, ranking ou decisão foi alterado;
-- a resposta contém apenas a nova análise final.
-
-PROMPT ORIGINAL E CONTEXTO:
-{original_prompt}
+CONTEXTO ESTRUTURADO ORIGINAL:
+{context_json}
 """.strip()
 
 
@@ -1855,6 +1842,7 @@ def _request_nvidia_analysis(
     client: Any,
     selected_model: str,
     user_prompt: str,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> str:
     """
     Executa NVIDIA NIM com resiliência somente para HTTP 503.
@@ -1874,7 +1862,7 @@ def _request_nvidia_analysis(
                 messages=[
                     {
                         "role": "system",
-                        "content": SYSTEM_PROMPT,
+                        "content": system_prompt,
                     },
                     {
                         "role": "user",
@@ -1982,7 +1970,7 @@ def run_cio_ai(
         first_semantic_rejection = str(first_error)
 
         correction_prompt = _build_semantic_correction_prompt(
-            prompt,
+            context,
             analysis,
             first_error,
         )
@@ -1991,6 +1979,7 @@ def run_cio_ai(
             client,
             selected_model,
             correction_prompt,
+            system_prompt=SEMANTIC_CORRECTION_SYSTEM_PROMPT,
         )
 
         # Fail-safe final:
