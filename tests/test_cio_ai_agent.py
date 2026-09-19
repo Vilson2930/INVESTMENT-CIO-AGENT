@@ -348,7 +348,7 @@ def run_tests():
 
     print("=" * 70)
     print("INVESTMENT CIO AGENT")
-    print("TESTE — CIO AI AGENT V1.2 / NVIDIA NIM")
+    print("TESTE — CIO AI AGENT V1.3 / NVIDIA NIM")
     print("=" * 70)
 
     fixture = build_orchestrator_fixture()
@@ -357,8 +357,8 @@ def run_tests():
 
     # 1
     assert_test(
-        CIO_AI_VERSION == "1.2",
-        "IDENTIFICAÇÃO V1.2",
+        CIO_AI_VERSION == "1.3",
+        "IDENTIFICAÇÃO V1.3",
     )
 
     # 2
@@ -1169,12 +1169,120 @@ def run_tests():
     )
 
     # ========================================================
+    # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.3
+    # ========================================================
+
+    # 83
+    assert_test(
+        context["mandatory_policy"]["status_label_does_not_imply_cause"] is True,
+        "STATUS NÃO IMPLICA CAUSA",
+    )
+
+    # 84
+    assert_test(
+        context["mandatory_policy"]["quantifiers_require_explicit_evidence"] is True,
+        "QUANTIFICADORES EXIGEM EVIDÊNCIA",
+    )
+
+    # 85
+    assert_test(
+        context["mandatory_policy"]["methodology_does_not_imply_signal_cause"] is True,
+        "METODOLOGIA NÃO IMPLICA CAUSA DO SINAL",
+    )
+
+    # 86
+    assert_test(
+        context["mandatory_policy"]["methodology_does_not_imply_future_signal_change"] is True,
+        "METODOLOGIA NÃO IMPLICA MUDANÇA FUTURA",
+    )
+
+    # 87
+    assert_test(
+        context["mandatory_policy"]["do_not_infer_condition_from_status_name"] is True
+        and context["mandatory_policy"]["do_not_create_group_statistics"] is True,
+        "SEM INFERÊNCIA DE STATUS OU ESTATÍSTICA INVENTADA",
+    )
+
+    # 88
+    assert_test(
+        "o nome ou rótulo de um status não prova sua causa" in system_prompt_lower
+        and "não derive causa a partir da semântica do status" in system_prompt_lower,
+        "PROMPT PROÍBE CAUSA DERIVADA DO STATUS",
+    )
+
+    # 89
+    assert_test(
+        "quantificadores exigem evidência explícita" in system_prompt_lower
+        and "não crie estatística ou distribuição implícita" in system_prompt_lower,
+        "PROMPT PROÍBE QUANTIFICADOR SEM EVIDÊNCIA",
+    )
+
+    # 90
+    assert_test(
+        "metodologia não é causa automática do sinal" in system_prompt_lower
+        and "não use a arquitetura do motor para completar lacunas" in system_prompt_lower,
+        "PROMPT SEPARA METODOLOGIA DE CAUSALIDADE",
+    )
+
+    # 91
+    assert_test(
+        "não preveja o que fará um sinal mudar" in system_prompt_lower
+        and "mudança futura de sinal" in system_prompt_lower,
+        "PROMPT PROÍBE PREVISÃO DE MUDANÇA DE SINAL",
+    )
+
+    # 92
+    assert_test(
+        "preserve a diferença entre rótulo e explicação" in system_prompt_lower
+        and "preserve a diferença entre lista e estatística" in system_prompt_lower,
+        "PROMPT PRESERVA RÓTULO E LISTA",
+    )
+
+    # 93
+    assert_test(
+        "não transforme o nome de um status em causa" in prompt_lower
+        and "não transforme metodologia do sistema em causa do sinal" in prompt_lower
+        and "não use quantificadores sem evidência explícita" in prompt_lower,
+        "USER PROMPT RECEBE TRAVAS V1.3",
+    )
+
+    # 94
+    assert_test(
+        result["policy"]["status_label_implies_cause"] is False
+        and result["policy"]["quantifiers_require_explicit_evidence"] is True,
+        "RESULTADO PROÍBE CAUSA POR STATUS E QUANTIFICADOR LIVRE",
+    )
+
+    # 95
+    assert_test(
+        result["policy"]["methodology_implies_signal_cause"] is False
+        and result["policy"]["methodology_implies_future_signal_change"] is False,
+        "RESULTADO PROÍBE CAUSALIDADE POR METODOLOGIA",
+    )
+
+    # 96
+    assert_test(
+        result["policy"]["group_statistics_may_be_invented"] is False,
+        "RESULTADO PROÍBE ESTATÍSTICA DE GRUPO INVENTADA",
+    )
+
+    # 97
+    assert_test(
+        "o nome ou rótulo de um status não prova sua causa" in sent_system_prompt
+        and "quantificadores exigem evidência explícita" in sent_system_prompt
+        and "metodologia não é causa automática do sinal" in sent_system_prompt
+        and "não transforme o nome de um status em causa" in sent_user_prompt
+        and "não use quantificadores sem evidência explícita" in sent_user_prompt,
+        "NVIDIA RECEBE GOVERNANÇA V1.3",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.2 — 82 TESTES OK"
+        "CIO AI AGENT V1.3 — 97 TESTES OK"
     )
     print("=" * 70)
 
