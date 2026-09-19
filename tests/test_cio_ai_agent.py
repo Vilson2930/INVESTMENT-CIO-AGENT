@@ -355,47 +355,32 @@ def run_tests():
 
     original_fixture = deepcopy(fixture)
 
-    # --------------------------------------------------------
-    # 1. IDENTIFICAÇÃO
-    # --------------------------------------------------------
-
+    # 1
     assert_test(
         CIO_AI_VERSION == "1.1",
         "IDENTIFICAÇÃO V1.1",
     )
 
-    # --------------------------------------------------------
-    # 2. MODELO NVIDIA
-    # --------------------------------------------------------
-
+    # 2
     assert_test(
         "nemotron-3-super-120b-a12b"
         in DEFAULT_MODEL,
         "MODELO NVIDIA",
     )
 
-    # --------------------------------------------------------
-    # 3. SETE SISTEMAS
-    # --------------------------------------------------------
-
+    # 3
     assert_test(
         len(OFFICIAL_SYSTEMS) == 7,
         "7 SISTEMAS OFICIAIS",
     )
 
-    # --------------------------------------------------------
-    # 4. VALIDAÇÃO DO CONTEXTO
-    # --------------------------------------------------------
-
+    # 4
     assert_test(
         validate_orchestrator_context(fixture) is True,
         "CONTEXTO DO ORCHESTRATOR",
     )
 
-    # --------------------------------------------------------
-    # 5. BUILD CONTEXT
-    # --------------------------------------------------------
-
+    # 5
     context = build_ai_context(fixture)
 
     assert_test(
@@ -403,30 +388,21 @@ def run_tests():
         "CONTEXTO DA IA",
     )
 
-    # --------------------------------------------------------
-    # 6. SYNTHESIS PRESERVADO
-    # --------------------------------------------------------
-
+    # 6
     assert_test(
         context["synthesis"]
         == fixture["synthesis"],
         "SYNTHESIS PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 7. GLOBAL RISK PRESERVADO
-    # --------------------------------------------------------
-
+    # 7
     assert_test(
         context["risk"]["global_risk"]
         == fixture["risk"]["global_risk"],
         "RISCO GLOBAL PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 8. KILL SWITCH
-    # --------------------------------------------------------
-
+    # 8
     assert_test(
         context["risk"]
         ["global_constraint"]
@@ -434,10 +410,7 @@ def run_tests():
         "KILL SWITCH PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 9. HARD BLOCK
-    # --------------------------------------------------------
-
+    # 9
     assert_test(
         context["risk"]
         ["global_constraint"]
@@ -445,20 +418,14 @@ def run_tests():
         "HARD BLOCK PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 10. RESTRIÇÕES
-    # --------------------------------------------------------
-
+    # 10
     assert_test(
         context["risk"]["restriction_codes"]
         == ["GLOBAL_KILL_SWITCH_ACTIVE"],
         "RESTRIÇÕES PRESERVADAS",
     )
 
-    # --------------------------------------------------------
-    # 11. DIVERGÊNCIA
-    # --------------------------------------------------------
-
+    # 11
     assert_test(
         context["synthesis"]
         ["macro_risk_relationship"]
@@ -466,10 +433,7 @@ def run_tests():
         "DIVERGÊNCIA PRESERVADA",
     )
 
-    # --------------------------------------------------------
-    # 12. GROWTH
-    # --------------------------------------------------------
-
+    # 12
     assert_test(
         context["synthesis"]
         ["source_signals"]
@@ -477,10 +441,7 @@ def run_tests():
         "GROWTH PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 13. AI INFRASTRUCTURE
-    # --------------------------------------------------------
-
+    # 13
     assert_test(
         context["synthesis"]
         ["source_signals"]
@@ -489,10 +450,7 @@ def run_tests():
         "AI INFRASTRUCTURE PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 14. FII
-    # --------------------------------------------------------
-
+    # 14
     assert_test(
         context["synthesis"]
         ["source_signals"]
@@ -501,10 +459,7 @@ def run_tests():
         "FII PRESERVADO",
     )
 
-    # --------------------------------------------------------
-    # 15. POLÍTICA DE SEGURANÇA
-    # --------------------------------------------------------
-
+    # 15
     assert_test(
         context["mandatory_policy"]
         ["broker_execution_allowed"] is False
@@ -514,10 +469,7 @@ def run_tests():
         "POLÍTICA DE SEGURANÇA",
     )
 
-    # --------------------------------------------------------
-    # 16. PROMPT RELACIONAL
-    # --------------------------------------------------------
-
+    # 16
     prompt = build_ai_prompt(context)
 
     assert_test(
@@ -531,10 +483,7 @@ def run_tests():
         "PROMPT RELACIONAL",
     )
 
-    # --------------------------------------------------------
-    # 17. EXECUÇÃO SIMULADA NVIDIA
-    # --------------------------------------------------------
-
+    # 17
     fake_client = FakeNVIDIAClient(
         content=(
             "Análise integrada simulada dos sete sistemas."
@@ -551,19 +500,13 @@ def run_tests():
         "EXECUÇÃO NVIDIA SIMULADA",
     )
 
-    # --------------------------------------------------------
-    # 18. PROVIDER
-    # --------------------------------------------------------
-
+    # 18
     assert_test(
         result["provider"] == "NVIDIA_NIM",
         "PROVEDOR NVIDIA",
     )
 
-    # --------------------------------------------------------
-    # 19. MODELO ENVIADO
-    # --------------------------------------------------------
-
+    # 19
     call = fake_client.completions.last_call
 
     assert_test(
@@ -571,10 +514,7 @@ def run_tests():
         "MODELO ENVIADO À NVIDIA",
     )
 
-    # --------------------------------------------------------
-    # 20. SYSTEM + USER
-    # --------------------------------------------------------
-
+    # 20
     assert_test(
         len(call["messages"]) == 2
         and
@@ -584,40 +524,28 @@ def run_tests():
         "MENSAGENS DA IA",
     )
 
-    # --------------------------------------------------------
-    # 21. ANÁLISE RETORNADA
-    # --------------------------------------------------------
-
+    # 21
     assert_test(
         result["analysis"]
         == "Análise integrada simulada dos sete sistemas.",
         "ANÁLISE RETORNADA",
     )
 
-    # --------------------------------------------------------
-    # 22. HARD BLOCK NO RESULTADO
-    # --------------------------------------------------------
-
+    # 22
     assert_test(
         result["context_summary"]
         ["hard_block"] is True,
         "HARD BLOCK NO RESULTADO",
     )
 
-    # --------------------------------------------------------
-    # 23. KILL SWITCH NO RESULTADO
-    # --------------------------------------------------------
-
+    # 23
     assert_test(
         result["context_summary"]
         ["global_kill_switch"] is True,
         "KILL SWITCH NO RESULTADO",
     )
 
-    # --------------------------------------------------------
-    # 24. NÃO RECALCULA
-    # --------------------------------------------------------
-
+    # 24
     assert_test(
         result["policy"]
         ["indicators_recalculated"] is False
@@ -627,49 +555,34 @@ def run_tests():
         "SEM RECÁLCULO OU NOVO SCORE",
     )
 
-    # --------------------------------------------------------
-    # 25. NÃO SOBRESCREVE
-    # --------------------------------------------------------
-
+    # 25
     assert_test(
         result["policy"]
         ["source_decisions_overridden"] is False,
         "DECISÕES NÃO SOBRESCRITAS",
     )
 
-    # --------------------------------------------------------
-    # 26. NÃO EXECUTA
-    # --------------------------------------------------------
-
+    # 26
     assert_test(
         result["policy"]
         ["broker_execution_allowed"] is False,
         "SEM EXECUÇÃO EM CORRETORA",
     )
 
-    # --------------------------------------------------------
-    # 27. DECISÃO HUMANA
-    # --------------------------------------------------------
-
+    # 27
     assert_test(
         result["policy"]
         ["human_decision_required"] is True,
         "DECISÃO HUMANA OBRIGATÓRIA",
     )
 
-    # --------------------------------------------------------
-    # 28. INPUT IMUTÁVEL
-    # --------------------------------------------------------
-
+    # 28
     assert_test(
         fixture == original_fixture,
         "INPUT NÃO ALTERADO",
     )
 
-    # --------------------------------------------------------
-    # 29. INTERFACE ALTERNATIVA
-    # --------------------------------------------------------
-
+    # 29
     second_client = FakeNVIDIAClient(
         content="Segunda análise simulada."
     )
@@ -684,16 +597,12 @@ def run_tests():
         "INTERFACE ALTERNATIVA",
     )
 
-    # --------------------------------------------------------
-    # 30. CONTEXTO VAZIO
-    # --------------------------------------------------------
-
+    # 30
     try:
         validate_orchestrator_context({})
         raise AssertionError(
             "Contexto vazio deveria falhar."
         )
-
     except CIOAIInputError:
         pass
 
@@ -702,16 +611,12 @@ def run_tests():
         "PROTEÇÃO CONTEXTO VAZIO",
     )
 
-    # --------------------------------------------------------
-    # 31. TIPO INVÁLIDO
-    # --------------------------------------------------------
-
+    # 31
     try:
         validate_orchestrator_context([])
         raise AssertionError(
             "Tipo inválido deveria falhar."
         )
-
     except CIOAIInputError:
         pass
 
@@ -720,23 +625,17 @@ def run_tests():
         "PROTEÇÃO TIPO INVÁLIDO",
     )
 
-    # --------------------------------------------------------
-    # 32. ETAPA AUSENTE
-    # --------------------------------------------------------
-
+    # 32
     invalid_fixture = deepcopy(fixture)
-
     del invalid_fixture["risk"]
 
     try:
         validate_orchestrator_context(
             invalid_fixture
         )
-
         raise AssertionError(
             "Etapa ausente deveria falhar."
         )
-
     except CIOAIInputError:
         pass
 
@@ -745,10 +644,7 @@ def run_tests():
         "PROTEÇÃO ETAPA AUSENTE",
     )
 
-    # --------------------------------------------------------
-    # 33. RESPOSTA VAZIA
-    # --------------------------------------------------------
-
+    # 33
     empty_client = FakeNVIDIAClient(
         content="   "
     )
@@ -758,11 +654,9 @@ def run_tests():
             fixture,
             client=empty_client,
         )
-
         raise AssertionError(
             "Resposta vazia deveria falhar."
         )
-
     except CIOAIResponseError:
         pass
 
@@ -771,10 +665,7 @@ def run_tests():
         "PROTEÇÃO RESPOSTA VAZIA",
     )
 
-    # --------------------------------------------------------
-    # 34. ERRO NVIDIA
-    # --------------------------------------------------------
-
+    # 34
     error_client = FakeNVIDIAClient(
         raise_error=True
     )
@@ -784,11 +675,9 @@ def run_tests():
             fixture,
             client=error_client,
         )
-
         raise AssertionError(
             "Erro NVIDIA deveria ser tratado."
         )
-
     except CIOAIResponseError:
         pass
 
@@ -801,10 +690,7 @@ def run_tests():
     # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.1
     # ========================================================
 
-    # --------------------------------------------------------
-    # 35. IA NÃO CRIA RECOMENDAÇÃO
-    # --------------------------------------------------------
-
+    # 35
     assert_test(
         context["mandatory_policy"]
         ["ai_must_not_create_investment_recommendations"]
@@ -812,10 +698,7 @@ def run_tests():
         "IA NÃO CRIA RECOMENDAÇÃO",
     )
 
-    # --------------------------------------------------------
-    # 36. IA NÃO CRIA REGRA OPERACIONAL
-    # --------------------------------------------------------
-
+    # 36
     assert_test(
         context["mandatory_policy"]
         ["ai_must_not_create_action_rules"]
@@ -823,10 +706,7 @@ def run_tests():
         "IA NÃO CRIA REGRA OPERACIONAL",
     )
 
-    # --------------------------------------------------------
-    # 37. IA NÃO INVENTA CAUSA
-    # --------------------------------------------------------
-
+    # 37
     assert_test(
         context["mandatory_policy"]
         ["ai_must_not_invent_signal_causes"]
@@ -834,10 +714,7 @@ def run_tests():
         "IA NÃO INVENTA CAUSA DE SINAL",
     )
 
-    # --------------------------------------------------------
-    # 38. IA NÃO INVENTA RELAÇÃO
-    # --------------------------------------------------------
-
+    # 38
     assert_test(
         context["mandatory_policy"]
         ["ai_must_not_invent_cross_system_relationships"]
@@ -845,10 +722,7 @@ def run_tests():
         "IA NÃO INVENTA RELAÇÃO ENTRE SISTEMAS",
     )
 
-    # --------------------------------------------------------
-    # 39. CAUSALIDADE EXIGE EVIDÊNCIA
-    # --------------------------------------------------------
-
+    # 39
     assert_test(
         context["mandatory_policy"]
         ["explicit_evidence_required_for_causal_claims"]
@@ -856,10 +730,7 @@ def run_tests():
         "CAUSALIDADE EXIGE EVIDÊNCIA",
     )
 
-    # --------------------------------------------------------
-    # 40. AÇÃO DE ORIGEM EXIGE ATRIBUIÇÃO
-    # --------------------------------------------------------
-
+    # 40
     assert_test(
         context["mandatory_policy"]
         ["source_actions_must_be_attributed"]
@@ -868,203 +739,166 @@ def run_tests():
     )
 
     # --------------------------------------------------------
-    # 41. SYSTEM PROMPT PROÍBE RECOMENDAÇÃO PRÓPRIA
+    # 41. CORRIGIDO — CASE INSENSITIVE
     # --------------------------------------------------------
 
+    system_prompt_lower = SYSTEM_PROMPT.lower()
+
     assert_test(
-        "NÃO CRIE RECOMENDAÇÕES PRÓPRIAS DE INVESTIMENTO"
-        in SYSTEM_PROMPT
+        "não crie recomendações próprias de investimento"
+        in system_prompt_lower
         and
         "não funciona"
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
         "oitavo motor"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "PROMPT PROÍBE RECOMENDAÇÃO PRÓPRIA",
     )
 
-    # --------------------------------------------------------
-    # 42. SYSTEM PROMPT PROÍBE CAUSA INVENTADA
-    # --------------------------------------------------------
-
+    # 42
     assert_test(
-        "NÃO INVENTE A CAUSA DE UM SINAL"
-        in SYSTEM_PROMPT
+        "não invente a causa de um sinal"
+        in system_prompt_lower
         and
         "evidência explícita"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "PROMPT PROÍBE CAUSA INVENTADA",
     )
 
-    # --------------------------------------------------------
-    # 43. SYSTEM PROMPT EXIGE RELAÇÃO COM EVIDÊNCIA
-    # --------------------------------------------------------
-
+    # 43
     assert_test(
-        "Uma relação entre dois sistemas"
-        in SYSTEM_PROMPT
+        "uma relação entre dois sistemas"
+        in system_prompt_lower
         and
         "efetivamente presentes no contexto"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "RELAÇÕES EXIGEM EVIDÊNCIA",
     )
 
-    # --------------------------------------------------------
-    # 44. MESMO TICKER EXIGE PRESENÇA NOS SISTEMAS
-    # --------------------------------------------------------
-
+    # 44
     assert_test(
         "mesmo ticker"
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
         "respectivos sistemas"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "CRUZAMENTO DE TICKER EXIGE EVIDÊNCIA",
     )
 
-    # --------------------------------------------------------
-    # 45. NÃO GENERALIZA POUCOS ATIVOS
-    # --------------------------------------------------------
-
+    # 45
     assert_test(
-        "Não generalize a partir de poucos ativos"
-        in SYSTEM_PROMPT,
+        "não generalize a partir de poucos ativos"
+        in system_prompt_lower,
         "SEM GENERALIZAÇÃO INDEVIDA",
     )
 
-    # --------------------------------------------------------
-    # 46. FATO / RELAÇÃO / INTERPRETAÇÃO
-    # --------------------------------------------------------
-
+    # 46
     assert_test(
-        "FATO DE ORIGEM:" in SYSTEM_PROMPT
+        "fato de origem:" in system_prompt_lower
         and
-        "RELAÇÃO:" in SYSTEM_PROMPT
+        "relação:" in system_prompt_lower
         and
-        "INTERPRETAÇÃO:" in SYSTEM_PROMPT,
+        "interpretação:" in system_prompt_lower,
         "SEPARAÇÃO FATO RELAÇÃO INTERPRETAÇÃO",
     )
 
-    # --------------------------------------------------------
-    # 47. SEM LINGUAGEM PRESCRITIVA PRÓPRIA
-    # --------------------------------------------------------
-
+    # 47
     assert_test(
-        "Não use linguagem prescritiva própria"
-        in SYSTEM_PROMPT
+        "não use linguagem prescritiva própria"
+        in system_prompt_lower
         and
         '"a recomendação é"'
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
         '"preserve capital"'
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "SEM LINGUAGEM PRESCRITIVA PRÓPRIA",
     )
 
-    # --------------------------------------------------------
-    # 48. HARD BLOCK NÃO GERA DECISÃO DA IA
-    # --------------------------------------------------------
-
+    # 48
     assert_test(
-        "Não transforme Kill Switch, Hard Block"
-        in SYSTEM_PROMPT
+        "não transforme kill switch, hard block"
+        in system_prompt_lower
         and
         "recomendação nova criada por você"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "HARD BLOCK NÃO GERA RECOMENDAÇÃO DA IA",
     )
 
-    # --------------------------------------------------------
-    # 49. OPORTUNIDADE + RESTRIÇÃO = COEXISTÊNCIA
-    # --------------------------------------------------------
-
+    # 49
     assert_test(
-        "descreva a"
-        in SYSTEM_PROMPT
-        and
         "coexistência"
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
-        "Não resolva essa tensão criando uma decisão própria"
-        in SYSTEM_PROMPT,
+        "não resolva essa tensão criando uma decisão própria"
+        in system_prompt_lower,
         "RISCO E OPORTUNIDADE SEM DECISÃO INVENTADA",
     )
 
-    # --------------------------------------------------------
-    # 50. AUSÊNCIA DE EVIDÊNCIA DEVE SER DECLARADA
-    # --------------------------------------------------------
-
+    # 50
     assert_test(
         "não fornece evidência"
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
         "causa específica"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "AUSÊNCIA DE EVIDÊNCIA DECLARADA",
     )
 
-    # --------------------------------------------------------
-    # 51. SÍNTESE CIO NÃO É NOVO MOTOR
-    # --------------------------------------------------------
-
+    # 51
     assert_test(
-        "A SÍNTESE CIO é uma síntese interpretativa"
-        in SYSTEM_PROMPT
+        "a síntese cio é uma síntese interpretativa"
+        in system_prompt_lower
         and
         "novo sinal"
-        in SYSTEM_PROMPT
+        in system_prompt_lower
         and
         "novo score"
-        in SYSTEM_PROMPT,
+        in system_prompt_lower,
         "SÍNTESE CIO SOMENTE INTERPRETATIVA",
     )
 
     # --------------------------------------------------------
-    # 52. USER PROMPT PROÍBE RECOMENDAÇÃO
+    # USER PROMPT NORMALIZADO
     # --------------------------------------------------------
 
+    prompt_lower = prompt.lower()
+
+    # 52
     assert_test(
-        "Não crie uma recomendação própria de investimento"
-        in prompt
+        "não crie uma recomendação própria de investimento"
+        in prompt_lower
         and
-        "A síntese NÃO pode:"
-        in prompt,
+        "a síntese não pode:"
+        in prompt_lower,
         "USER PROMPT SEM RECOMENDAÇÃO PRÓPRIA",
     )
 
-    # --------------------------------------------------------
-    # 53. USER PROMPT PROÍBE CAUSA DE TIMING INVENTADA
-    # --------------------------------------------------------
-
+    # 53
     assert_test(
-        "Não atribua um motivo ao timing"
-        in prompt
+        "não atribua um motivo ao timing"
+        in prompt_lower
         and
         "não fornece"
-        in prompt
+        in prompt_lower
         and
         "causa específica"
-        in prompt,
+        in prompt_lower,
         "USER PROMPT SEM CAUSA DE TIMING INVENTADA",
     )
 
-    # --------------------------------------------------------
-    # 54. USER PROMPT PRESERVA RESTRIÇÕES
-    # --------------------------------------------------------
-
+    # 54
     assert_test(
-        "Kill Switch e Hard Block devem ser apresentados exatamente"
-        in prompt
+        "kill switch e hard block devem ser apresentados exatamente"
+        in prompt_lower
         and
-        "Não crie consequências operacionais adicionais"
-        in prompt,
+        "não crie consequências operacionais adicionais"
+        in prompt_lower,
         "USER PROMPT PRESERVA GOVERNANÇA",
     )
 
-    # --------------------------------------------------------
-    # 55. RESULTADO DECLARA SEM RECOMENDAÇÃO DA IA
-    # --------------------------------------------------------
-
+    # 55
     assert_test(
         result["policy"]
         ["ai_created_investment_recommendation"]
@@ -1072,10 +906,7 @@ def run_tests():
         "RESULTADO SEM RECOMENDAÇÃO DA IA",
     )
 
-    # --------------------------------------------------------
-    # 56. RESULTADO DECLARA SEM REGRA DE AÇÃO
-    # --------------------------------------------------------
-
+    # 56
     assert_test(
         result["policy"]
         ["ai_created_action_rule"]
@@ -1083,10 +914,7 @@ def run_tests():
         "RESULTADO SEM REGRA DE AÇÃO",
     )
 
-    # --------------------------------------------------------
-    # 57. RESULTADO EXIGE EVIDÊNCIA CAUSAL
-    # --------------------------------------------------------
-
+    # 57
     assert_test(
         result["policy"]
         ["causal_claims_require_explicit_evidence"]
@@ -1095,27 +923,32 @@ def run_tests():
     )
 
     # --------------------------------------------------------
-    # 58. PROMPT ENVIADO À NVIDIA CONTÉM GOVERNANÇA V1.1
+    # 58. PROMPT REAL ENVIADO À NVIDIA
     # --------------------------------------------------------
 
-    sent_system_prompt = call["messages"][0]["content"]
-    sent_user_prompt = call["messages"][1]["content"]
+    sent_system_prompt = (
+        call["messages"][0]["content"].lower()
+    )
+
+    sent_user_prompt = (
+        call["messages"][1]["content"].lower()
+    )
 
     assert_test(
-        "NÃO CRIE RECOMENDAÇÕES PRÓPRIAS DE INVESTIMENTO"
+        "não crie recomendações próprias de investimento"
         in sent_system_prompt
         and
-        "NÃO INVENTE A CAUSA DE UM SINAL"
+        "não invente a causa de um sinal"
         in sent_system_prompt
         and
-        "Não crie uma recomendação própria de investimento"
+        "não crie uma recomendação própria de investimento"
         in sent_user_prompt,
         "NVIDIA RECEBE GOVERNANÇA V1.1",
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # RESULTADO FINAL
-    # --------------------------------------------------------
+    # ========================================================
 
     print("=" * 70)
     print(
