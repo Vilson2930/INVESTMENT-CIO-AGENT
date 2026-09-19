@@ -1643,7 +1643,7 @@ def run_tests():
     detected_classes_block = (
         correction_user_prompt
         .split("classes de violação detectadas:", 1)[1]
-        .split("importante:", 1)[0]
+        .split("regras obrigatórias para a reconstrução:", 1)[0]
     )
 
     assert_test(
