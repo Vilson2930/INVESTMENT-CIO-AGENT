@@ -83,3 +83,7 @@ jobs:
       - name: Test Orchestrator
         run: |
           python -m tests.test_orchestrator
+
+      - name: Test CIO AI Agent
+        run: |
+          python -m tests.test_cio_ai_agent
