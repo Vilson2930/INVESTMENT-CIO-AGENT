@@ -1,113 +1,71 @@
 # ============================================================
 # INVESTMENT CIO AGENT
-# agents/orchestrator.py
+# agents/risk_agent.py
 # ============================================================
 #
-# ORCHESTRATOR V1
+# Camada central de risco do Investment CIO Agent.
 #
-# Responsabilidade:
-# Coordenar a execução das camadas centrais do Investment CIO:
+# Responsabilidades:
+# 1. Receber a síntese já produzida pelo Synthesis Agent.
+# 2. Ler restrições e alertas de risco já produzidos pelos motores.
+# 3. Separar risco global de oportunidades/seleção de ativos.
+# 4. Detectar quando existe oportunidade sob restrição de risco.
+# 5. Preservar integralmente os sinais originais.
+# 6. Produzir um contexto de risco para as próximas camadas do CIO.
 #
-#   outputs padronizados dos motores
-#               ↓
-#   Synthesis Agent V2
-#               ↓
-#   Risk Agent V1
-#               ↓
-#   Decision Agent V1
-#               ↓
-#   Executive Report Agent V1
-#               ↓
-#   resultado consolidado
-#
-# Esta camada NÃO:
-# - recalcula indicadores dos motores;
+# Este módulo NÃO:
+# - recalcula indicadores;
+# - cria score quantitativo novo;
 # - altera sinais;
-# - altera decisões;
-# - cria score quantitativo;
-# - cria recomendação automática;
+# - reordena ativos;
+# - transforma AGUARDAR em COMPRA;
+# - transforma ENTRADA_FORTE em AGUARDAR;
 # - executa ordens;
-# - acessa corretora;
 # - substitui decisão humana.
 #
 # ============================================================
 
-from copy import deepcopy
 from datetime import datetime, timezone
 
-from agents.synthesis_agent import synthesize_outputs
-from agents.risk_agent import assess_risk
-from agents.decision_agent import build_decision
-from agents.executive_report_agent import build_executive_report
 
-
-ORCHESTRATOR_VERSION = "1.0"
+RISK_AGENT_VERSION = "1.0"
 
 
 # ============================================================
 # EXCEÇÕES
 # ============================================================
 
-
-class OrchestratorError(Exception):
-    """Erro geral do Investment CIO Orchestrator."""
-
-
-class InvalidOrchestratorInputError(OrchestratorError):
-    """Entrada inválida para o Orchestrator."""
+class RiskAgentError(Exception):
+    """Erro geral da camada central de risco."""
 
 
-class OrchestratorStageError(OrchestratorError):
-    """Falha em uma das etapas internas do pipeline."""
-
-    def __init__(self, stage, original_error):
-        self.stage = stage
-        self.original_error = original_error
-
-        super().__init__(
-            f"Falha na etapa '{stage}': {original_error}"
-        )
-
-
-# ============================================================
-# CONSTANTES
-# ============================================================
-
-
-PIPELINE_STAGES = (
-    "synthesis",
-    "risk",
-    "decision",
-    "executive_report",
-)
+class InvalidSynthesisError(RiskAgentError):
+    """Síntese inválida ou incompleta para análise de risco."""
 
 
 # ============================================================
 # AUXILIARES
 # ============================================================
 
-
-def _utc_now():
-    return datetime.now(
-        timezone.utc
-    ).isoformat()
-
-
 def _safe_dict(value):
     if isinstance(value, dict):
         return value
-
     return {}
 
 
 def _safe_list(value):
     if isinstance(value, list):
         return value
-
     return []
 
 
-def _unique(values):
+def _normalize_text(value):
+    if value is None:
+        return None
+    return str(value).strip().upper()
+
+
+def _unique_list(values):
     result = []
 
     for value in values:
@@ -120,705 +78,539 @@ def _unique(values):
     return result
 
 
-# ============================================================
-# VALIDAÇÃO DA ENTRADA
-# ============================================================
-
-
-def _validate_outputs(outputs):
-
-    if not isinstance(outputs, list):
-        raise InvalidOrchestratorInputError(
-            "A entrada do Orchestrator deve ser uma lista "
-            "de outputs padronizados."
+def _validate_synthesis(synthesis):
+    if not isinstance(synthesis, dict):
+        raise InvalidSynthesisError(
+            "A síntese deve ser um dicionário."
         )
 
-    if not outputs:
-        raise InvalidOrchestratorInputError(
-            "A lista de outputs não pode estar vazia."
+    required = (
+        "synthesis_version",
+        "status",
+        "comparison",
+        "risk",
+        "policy",
+    )
+
+    missing = [
+        field
+        for field in required
+        if field not in synthesis
+    ]
+
+    if missing:
+        raise InvalidSynthesisError(
+            "Síntese incompleta. Campos ausentes: "
+            + ", ".join(missing)
         )
 
-    for index, output in enumerate(outputs):
+    if not isinstance(
+        synthesis.get("comparison"),
+        dict
+    ):
+        raise InvalidSynthesisError(
+            "Campo 'comparison' deve ser um dicionário."
+        )
 
-        if not isinstance(output, dict):
-            raise InvalidOrchestratorInputError(
-                "Todos os outputs devem ser dicionários. "
-                f"Item inválido no índice {index}."
-            )
+    if not isinstance(
+        synthesis.get("risk"),
+        dict
+    ):
+        raise InvalidSynthesisError(
+            "Campo 'risk' deve ser um dicionário."
+        )
 
-        if not output.get("system_id"):
-            raise InvalidOrchestratorInputError(
-                "Todo output deve possuir 'system_id'. "
-                f"Campo ausente no índice {index}."
-            )
+    if not isinstance(
+        synthesis.get("policy"),
+        dict
+    ):
+        raise InvalidSynthesisError(
+            "Campo 'policy' deve ser um dicionário."
+        )
 
     return True
 
 
 # ============================================================
-# INVENTÁRIO DOS INPUTS
+# EXTRAÇÃO DE RISCO GLOBAL
 # ============================================================
 
+def _extract_global_risk(synthesis):
+    risk = _safe_dict(
+        synthesis.get("risk")
+    )
 
-def _build_input_inventory(outputs):
-
-    systems = []
-
-    for output in outputs:
-
-        systems.append({
-            "system_id": output.get("system_id"),
-            "system_name": output.get("system_name"),
-            "status": output.get("status"),
-            "generated_at": output.get("generated_at"),
-        })
-
-    system_ids = [
-        item.get("system_id")
-        for item in systems
-        if item.get("system_id")
-    ]
-
-    unique_system_ids = _unique(
-        system_ids
+    comparison = _safe_dict(
+        synthesis.get("comparison")
     )
 
     return {
-        "input_count": len(outputs),
-        "systems": systems,
-        "system_ids": system_ids,
-        "unique_system_ids": unique_system_ids,
-        "unique_system_count": len(
-            unique_system_ids
+        "sp500_risk_level": (
+            risk.get("sp500_risk_level")
+        ),
+        "global_risk_level": (
+            risk.get("global_risk_level")
+        ),
+        "global_survival_status": (
+            risk.get("global_survival_status")
+        ),
+        "global_kill_switch": (
+            risk.get("global_kill_switch")
+        ),
+        "alerts": list(
+            _safe_list(risk.get("alerts"))
+        ),
+        "sp500_stance": (
+            comparison.get("sp500_stance")
+        ),
+        "global_stance": (
+            comparison.get("global_stance")
+        ),
+        "relationship": (
+            comparison.get("relationship")
         ),
     }
 
 
 # ============================================================
-# EXECUÇÃO PROTEGIDA DE ETAPA
+# RESTRIÇÕES DE RISCO
 # ============================================================
 
+def _detect_global_restrictions(global_risk):
+    """
+    Detecta restrições usando somente fatos já presentes
+    na síntese. Não calcula um novo score de risco.
+    """
 
-def _run_stage(
-    stage_name,
-    function,
-    *args,
-):
+    restrictions = []
 
-    try:
-        return function(*args)
+    if global_risk.get(
+        "global_kill_switch"
+    ) is True:
 
-    except Exception as exc:
-        raise OrchestratorStageError(
-            stage_name,
-            exc,
-        ) from exc
+        restrictions.append({
+            "code": "GLOBAL_KILL_SWITCH_ACTIVE",
+            "source": "COPIAULTIMOROB",
+            "severity": "CRITICAL",
+            "message": (
+                "Survival Kill Switch global ativo."
+            ),
+        })
+
+    global_level = _normalize_text(
+        global_risk.get(
+            "global_risk_level"
+        )
+    )
+
+    if global_level in {
+        "CRITICO",
+        "CRÍTICO",
+        "CRITICAL",
+    }:
+
+        restrictions.append({
+            "code": "GLOBAL_RISK_CRITICAL",
+            "source": "COPIAULTIMOROB",
+            "severity": "CRITICAL",
+            "message": (
+                "Nível global de risco classificado "
+                "como crítico pelo sistema de origem."
+            ),
+        })
+
+    global_stance = _normalize_text(
+        global_risk.get(
+            "global_stance"
+        )
+    )
+
+    if global_stance == "DEFENSIVE":
+
+        restrictions.append({
+            "code": "GLOBAL_DEFENSIVE_STANCE",
+            "source": "COPIAULTIMOROB",
+            "severity": "HIGH",
+            "message": (
+                "Postura global defensiva identificada "
+                "pela síntese."
+            ),
+        })
+
+    relationship = _normalize_text(
+        global_risk.get(
+            "relationship"
+        )
+    )
+
+    if relationship == "DIVERGENCE":
+
+        restrictions.append({
+            "code": "MACRO_RISK_DIVERGENCE",
+            "source": "SYNTHESIS_AGENT",
+            "severity": "WARNING",
+            "message": (
+                "SP500 Cycle Atlas e COPIAULTIMOROB "
+                "apresentam posturas divergentes."
+            ),
+        })
+
+    return restrictions
 
 
 # ============================================================
-# STATUS DO PIPELINE
+# EVIDÊNCIAS DE SELEÇÃO E OPORTUNIDADES
 # ============================================================
 
+def _extract_layer_evidence(synthesis):
+    """
+    Preserva os objetos recebidos da síntese e sua ordem.
+    """
 
-def _build_stage_status(
-    synthesis,
-    risk,
-    decision,
-    report,
-):
+    layers = _safe_dict(
+        synthesis.get("layers")
+    )
+
+    asset_selection = list(
+        _safe_list(
+            layers.get("ASSET_SELECTION")
+        )
+    )
+
+    opportunity_scanners = list(
+        _safe_list(
+            layers.get("OPPORTUNITY_SCANNER")
+        )
+    )
 
     return {
-        "synthesis": {
-            "completed": True,
-            "version": synthesis.get(
-                "synthesis_version"
-            ),
-            "status": synthesis.get(
-                "status"
-            ),
-        },
-
-        "risk": {
-            "completed": True,
-            "version": risk.get(
-                "risk_agent_version"
-            ),
-            "status": risk.get(
-                "status"
-            ),
-        },
-
-        "decision": {
-            "completed": True,
-            "version": decision.get(
-                "decision_agent_version"
-            ),
-            "status": decision.get(
-                "status"
-            ),
-        },
-
-        "executive_report": {
-            "completed": True,
-            "version": report.get(
-                "executive_report_agent_version"
-            ),
-            "status": report.get(
-                "status"
-            ),
-        },
+        "asset_selection": asset_selection,
+        "opportunity_scanners": (
+            opportunity_scanners
+        ),
     }
 
 
-# ============================================================
-# DETERMINAÇÃO DO STATUS FINAL
-# ============================================================
+def _collect_source_signals(evidence):
+    """
+    Coleta sinais existentes apenas para evidência.
+    Não os classifica, pontua ou modifica.
+    """
+
+    collected = []
+
+    for system in (
+        evidence["asset_selection"]
+        + evidence["opportunity_scanners"]
+    ):
+
+        system_id = system.get("system_id")
+        system_name = system.get("system_name")
+
+        decision_signal = system.get("signal")
+
+        if decision_signal is not None:
+            collected.append({
+                "system_id": system_id,
+                "system_name": system_name,
+                "scope": "SYSTEM",
+                "signal": decision_signal,
+            })
+
+        for position in _safe_list(
+            system.get("positions")
+        ):
+
+            signal = (
+                position.get("entry_signal")
+                or position.get("signal")
+                or position.get("final_status")
+                or position.get("decision")
+            )
+
+            if signal is not None:
+                collected.append({
+                    "system_id": system_id,
+                    "system_name": system_name,
+                    "scope": "POSITION",
+                    "ticker": position.get("ticker"),
+                    "signal": signal,
+                })
+
+        for opportunity in _safe_list(
+            system.get("opportunities")
+        ):
+
+            signal = (
+                opportunity.get("signal")
+                or opportunity.get("signal_status")
+                or opportunity.get("final_status")
+                or opportunity.get("decision")
+            )
+
+            if signal is not None:
+                collected.append({
+                    "system_id": system_id,
+                    "system_name": system_name,
+                    "scope": "OPPORTUNITY",
+                    "ticker": opportunity.get("ticker"),
+                    "signal": signal,
+                })
+
+    return collected
 
 
-def _determine_pipeline_status(
-    synthesis,
-    risk,
-    decision,
-    report,
+# ============================================================
+# TENSÃO ENTRE RISCO E OPORTUNIDADES
+# ============================================================
+
+def _has_positive_entry_evidence(source_signals):
+    """
+    Identifica apenas a existência de sinais de entrada
+    explicitamente produzidos pelos motores.
+
+    Isso NÃO significa autorização de compra.
+    """
+
+    positive_terms = {
+        "ENTRADA FORTE",
+        "ENTRADA_FORTE",
+        "ENTRADA",
+        "ENTRADA APROVADA",
+        "ENTRADA_APROVADA",
+        "ENTRADA PARCIAL",
+        "ENTRADA_PARCIAL",
+        "COMPRA",
+        "COMPRAR AGORA",
+        "COMPRAR_AGORA",
+    }
+
+    for item in source_signals:
+        signal = _normalize_text(
+            item.get("signal")
+        )
+
+        if signal in positive_terms:
+            return True
+
+    return False
+
+
+def _build_risk_opportunity_context(
+    restrictions,
+    source_signals,
 ):
+    """
+    Registra coexistência de risco e oportunidades.
+    Não resolve a tensão substituindo os motores.
+    """
 
-    statuses = [
-        synthesis.get("status"),
-        risk.get("status"),
-        decision.get("status"),
-        report.get("status"),
-    ]
+    has_restrictions = bool(restrictions)
 
-    normalized = {
-        str(status).strip().upper()
-        for status in statuses
-        if status is not None
+    has_positive_entry = (
+        _has_positive_entry_evidence(
+            source_signals
+        )
+    )
+
+    if (
+        has_restrictions
+        and has_positive_entry
+    ):
+        state = "OPPORTUNITY_UNDER_RISK_RESTRICTION"
+
+        interpretation = (
+            "Existem sinais de entrada produzidos por "
+            "motores específicos ao mesmo tempo em que "
+            "há restrições de risco global. Os sinais "
+            "originais permanecem preservados."
+        )
+
+    elif has_restrictions:
+        state = "RISK_RESTRICTION_PRESENT"
+
+        interpretation = (
+            "Existem restrições de risco global "
+            "registradas pelos sistemas de origem."
+        )
+
+    elif has_positive_entry:
+        state = "ENTRY_EVIDENCE_WITHOUT_GLOBAL_RESTRICTION"
+
+        interpretation = (
+            "Existem sinais de entrada produzidos por "
+            "motores específicos e nenhuma restrição "
+            "global foi detectada nesta camada."
+        )
+
+    else:
+        state = "NO_ENTRY_EVIDENCE_NO_GLOBAL_RESTRICTION"
+
+        interpretation = (
+            "Não foi identificada coexistência de "
+            "sinais explícitos de entrada com "
+            "restrições globais nesta análise."
+        )
+
+    return {
+        "state": state,
+        "has_global_restrictions": (
+            has_restrictions
+        ),
+        "has_positive_entry_evidence": (
+            has_positive_entry
+        ),
+        "interpretation": interpretation,
     }
 
-    if "ERROR" in normalized:
+
+# ============================================================
+# STATUS DA CAMADA DE RISCO
+# ============================================================
+
+def _determine_risk_agent_status(
+    synthesis,
+    restrictions,
+):
+    synthesis_status = _normalize_text(
+        synthesis.get("status")
+    )
+
+    if synthesis_status == "ERROR":
         return "ERROR"
 
-    if "DATA_INSUFFICIENT" in normalized:
+    if synthesis_status == "DATA_INSUFFICIENT":
         return "DATA_INSUFFICIENT"
 
-    if "WARNING" in normalized:
+    critical = any(
+        restriction.get("severity")
+        == "CRITICAL"
+        for restriction in restrictions
+    )
+
+    if critical:
+        return "WARNING"
+
+    if synthesis_status == "WARNING":
         return "WARNING"
 
     return "OK"
 
 
 # ============================================================
-# GOVERNANÇA
+# INTERFACE PRINCIPAL
 # ============================================================
 
-
-def _build_governance(
-    synthesis,
-    risk,
-    decision,
-    report,
-):
-
-    synthesis_policy = _safe_dict(
-        synthesis.get("policy")
-    )
-
-    risk_policy = _safe_dict(
-        risk.get("policy")
-    )
-
-    decision_policy = _safe_dict(
-        decision.get("policy")
-    )
-
-    report_policy = _safe_dict(
-        report.get("policy")
-    )
-
-    return {
-        "source_signals_preserved": (
-            synthesis_policy.get(
-                "source_signals_preserved",
-                True,
-            )
-            is not False
-            and risk_policy.get(
-                "source_signals_preserved",
-                True,
-            )
-            is not False
-            and decision_policy.get(
-                "source_signals_preserved",
-                True,
-            )
-            is not False
-            and report_policy.get(
-                "source_signals_preserved",
-                True,
-            )
-            is not False
-        ),
-
-        "source_order_preserved": (
-            synthesis_policy.get(
-                "source_order_preserved",
-                True,
-            )
-            is not False
-            and risk_policy.get(
-                "source_order_preserved",
-                True,
-            )
-            is not False
-            and decision_policy.get(
-                "source_order_preserved",
-                True,
-            )
-            is not False
-            and report_policy.get(
-                "source_order_preserved",
-                True,
-            )
-            is not False
-        ),
-
-        "source_decisions_overridden": False,
-
-        "source_risk_recalculated": False,
-
-        "new_quantitative_score_created": False,
-
-        "automatic_trade_decision_created": False,
-
-        "broker_execution_allowed": False,
-
-        "human_decision_required": True,
-
-        "pipeline_only_coordinates_layers": True,
-    }
-
-
-# ============================================================
-# RESUMO DO PIPELINE
-# ============================================================
-
-
-def _build_pipeline_summary(
-    inventory,
-    synthesis,
-    risk,
-    decision,
-    report,
-    final_status,
-):
-
-    synthesis_comparison = _safe_dict(
-        synthesis.get("comparison")
-    )
-
-    # --------------------------------------------------------
-    # ESTRUTURA REAL DO RISK AGENT V1
-    # --------------------------------------------------------
-
-    global_risk = _safe_dict(
-        risk.get("global_risk")
-    )
-
-    risk_opportunity_context = _safe_dict(
-        risk.get(
-            "risk_opportunity_context"
-        )
-    )
-
-    restriction_codes = _safe_list(
-        risk.get("restriction_codes")
-    )
-
-    restrictions = _safe_list(
-        risk.get("restrictions")
-    )
-
-    # --------------------------------------------------------
-    # HARD BLOCK
-    #
-    # Não cria uma nova avaliação de risco.
-    # Apenas reconhece a restrição explícita já produzida
-    # pelo Risk Agent quando o Survival Kill Switch está ativo.
-    # --------------------------------------------------------
-
-    hard_block = (
-        "GLOBAL_KILL_SWITCH_ACTIVE"
-        in restriction_codes
-    )
-
-    decision_macro = _safe_dict(
-        decision.get("macro_context")
-    )
-
-    decision_operational = _safe_dict(
-        decision.get("operational_context")
-    )
-
-    report_summary = _safe_dict(
-        report.get("report_summary")
-    )
-
-    return {
-        "status": final_status,
-
-        "input_system_count": (
-            inventory.get(
-                "unique_system_count"
-            )
-        ),
-
-        "macro_relationship": (
-            decision_macro.get(
-                "relationship"
-            )
-            or synthesis_comparison.get(
-                "relationship"
-            )
-        ),
-
-        "global_constraint_state": (
-            risk_opportunity_context.get(
-                "state"
-            )
-        ),
-
-        "hard_block": hard_block,
-
-        "global_kill_switch": (
-            global_risk.get(
-                "global_kill_switch"
-            )
-        ),
-
-        "global_risk_level": (
-            global_risk.get(
-                "global_risk_level"
-            )
-        ),
-
-        "global_survival_status": (
-            global_risk.get(
-                "global_survival_status"
-            )
-        ),
-
-        "restriction_codes": list(
-            restriction_codes
-        ),
-
-        "restriction_count": len(
-            restrictions
-        ),
-
-        "operational_state": (
-            decision_operational.get(
-                "state"
-            )
-        ),
-
-        "governance_state": (
-            decision_operational.get(
-                "governance"
-            )
-        ),
-
-        "conflict_count": (
-            report_summary.get(
-                "conflict_count"
-            )
-        ),
-
-        "alert_count": (
-            report_summary.get(
-                "alert_count"
-            )
-        ),
-
-        "source_signal_count": (
-            report_summary.get(
-                "source_signal_count"
-            )
-        ),
-
-        "human_decision_required": True,
-
-        "broker_execution_allowed": False,
-    }
-
-
-# ============================================================
-# AUDITORIA DE IMUTABILIDADE
-# ============================================================
-
-
-def _assert_inputs_unchanged(
-    before,
-    after,
-):
-
-    if before != after:
-        raise OrchestratorError(
-            "Os outputs de origem foram alterados "
-            "durante a execução do pipeline."
-        )
-
-    return True
-
-
-# ============================================================
-# PIPELINE PRINCIPAL
-# ============================================================
-
-
-def run_pipeline(outputs):
-
+def assess_risk(synthesis):
     """
-    Executa o pipeline central do Investment CIO Agent.
+    Produz o contexto central de risco.
 
-    Entrada:
-        Lista de outputs já padronizados pelos adapters.
-
-    Fluxo:
-        Synthesis
-            ↓
-        Risk
-            ↓
-        Decision
-            ↓
-        Executive Report
-
-    Saída:
-        Estrutura única contendo todas as etapas,
-        rastreabilidade, governança e relatório final.
-
-    Nenhuma ordem de corretora é executada.
+    O retorno é descritivo e de governança.
+    Não é recomendação de investimento.
     """
 
-    _validate_outputs(
-        outputs
+    _validate_synthesis(
+        synthesis
     )
 
-    original_outputs = deepcopy(
-        outputs
+    global_risk = _extract_global_risk(
+        synthesis
     )
 
-    working_outputs = deepcopy(
-        outputs
-    )
-
-    started_at = _utc_now()
-
-    inventory = _build_input_inventory(
-        working_outputs
-    )
-
-    # --------------------------------------------------------
-    # 1 — SYNTHESIS
-    # --------------------------------------------------------
-
-    synthesis = _run_stage(
-        "synthesis",
-        synthesize_outputs,
-        working_outputs,
-    )
-
-    # --------------------------------------------------------
-    # 2 — RISK
-    # --------------------------------------------------------
-
-    risk = _run_stage(
-        "risk",
-        assess_risk,
-        synthesis,
-    )
-
-    # --------------------------------------------------------
-    # 3 — DECISION
-    # --------------------------------------------------------
-
-    decision = _run_stage(
-        "decision",
-        build_decision,
-        synthesis,
-        risk,
-    )
-
-    # --------------------------------------------------------
-    # 4 — EXECUTIVE REPORT
-    # --------------------------------------------------------
-
-    report = _run_stage(
-        "executive_report",
-        build_executive_report,
-        decision,
-    )
-
-    # --------------------------------------------------------
-    # IMUTABILIDADE DOS INPUTS
-    # --------------------------------------------------------
-
-    _assert_inputs_unchanged(
-        original_outputs,
-        outputs,
-    )
-
-    # --------------------------------------------------------
-    # STATUS
-    # --------------------------------------------------------
-
-    final_status = (
-        _determine_pipeline_status(
-            synthesis,
-            risk,
-            decision,
-            report,
+    restrictions = (
+        _detect_global_restrictions(
+            global_risk
         )
     )
 
-    stage_status = (
-        _build_stage_status(
-            synthesis,
-            risk,
-            decision,
-            report,
+    evidence = _extract_layer_evidence(
+        synthesis
+    )
+
+    source_signals = (
+        _collect_source_signals(
+            evidence
         )
     )
 
-    governance = (
-        _build_governance(
-            synthesis,
-            risk,
-            decision,
-            report,
+    risk_opportunity_context = (
+        _build_risk_opportunity_context(
+            restrictions,
+            source_signals,
         )
     )
 
-    summary = (
-        _build_pipeline_summary(
-            inventory,
+    status = (
+        _determine_risk_agent_status(
             synthesis,
-            risk,
-            decision,
-            report,
-            final_status,
+            restrictions,
         )
     )
 
-    finished_at = _utc_now()
-
-    # --------------------------------------------------------
-    # RESULTADO FINAL
-    # --------------------------------------------------------
+    restriction_codes = [
+        item.get("code")
+        for item in restrictions
+    ]
 
     return {
-        "orchestrator_version": (
-            ORCHESTRATOR_VERSION
+        "risk_agent_version": (
+            RISK_AGENT_VERSION
         ),
 
-        "pipeline_name": (
-            "INVESTMENT_CIO_CORE_PIPELINE"
+        "generated_at": (
+            datetime.now(
+                timezone.utc
+            ).isoformat()
         ),
 
-        "status": final_status,
+        "status": status,
 
-        "started_at": started_at,
-
-        "finished_at": finished_at,
-
-        "stages": list(
-            PIPELINE_STAGES
+        "source_synthesis_version": (
+            synthesis.get(
+                "synthesis_version"
+            )
         ),
 
-        "stage_status": (
-            stage_status
+        "global_risk": global_risk,
+
+        "restrictions": restrictions,
+
+        "restriction_codes": (
+            _unique_list(
+                restriction_codes
+            )
         ),
 
-        "input_inventory": (
-            inventory
+        "evidence": evidence,
+
+        "source_signals": (
+            source_signals
         ),
 
-        "synthesis": (
-            synthesis
-        ),
-
-        "risk": (
-            risk
-        ),
-
-        "decision": (
-            decision
-        ),
-
-        "executive_report": (
-            report
-        ),
-
-        "summary": (
-            summary
-        ),
-
-        "governance": (
-            governance
+        "risk_opportunity_context": (
+            risk_opportunity_context
         ),
 
         "policy": {
-            "orchestration_only": True,
-
-            "source_outputs_preserved": True,
-
             "source_signals_preserved": True,
-
             "source_order_preserved": True,
-
-            "source_decisions_overridden": False,
-
-            "source_risk_recalculated": False,
-
+            "indicators_recalculated": False,
             "new_quantitative_score_created": False,
-
-            "recommendation_created": False,
-
-            "automatic_trade_decision_created": False,
-
+            "source_decisions_overridden": False,
+            "risk_restrictions_change_source_signals": False,
+            "selection_systems_used_as_macro_votes": False,
+            "opportunity_systems_used_as_macro_votes": False,
             "broker_execution_allowed": False,
-
             "human_decision_required": True,
         },
     }
 
 
 # ============================================================
-# INTERFACE ALTERNATIVA
-# ============================================================
-
-
-def orchestrate(outputs):
-
-    """
-    Alias simples para run_pipeline().
-    """
-
-    return run_pipeline(
-        outputs
-    )
-
-
-# ============================================================
 # INTERFACE GENÉRICA
 # ============================================================
 
-
-def run_orchestrator(outputs):
-
-    """
-    Interface genérica do Orchestrator V1.
-    """
-
-    return run_pipeline(
-        outputs
+def run_risk_agent(synthesis):
+    return assess_risk(
+        synthesis
     )
