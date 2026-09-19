@@ -1578,8 +1578,8 @@ def run_tests():
 
     assert_test(
         "análise abaixo foi rejeitada" in correction_user_prompt
-        and "erro da barreira" in correction_user_prompt
-        and "corrija somente as violações apontadas" in correction_user_prompt
+        and "violações detectadas pela barreira" in correction_user_prompt
+        and "a correção deve eliminar todas as violações" in correction_user_prompt
         and "não altere sinais" in correction_user_prompt
         and "não altere scores" in correction_user_prompt
         and "não altere rankings" in correction_user_prompt,
@@ -1625,13 +1625,40 @@ def run_tests():
         "AUTOCORREÇÃO LIMITADA A UMA TENTATIVA",
     )
 
+    # 124
+    assert_test(
+        "limita exposição" in correction_user_prompt
+        and "restringe exposição" in correction_user_prompt
+        and "não tente contornar a barreira com sinônimos"
+        in correction_user_prompt,
+        "AUTOCORREÇÃO PROÍBE PARÁFRASE DA CONSEQUÊNCIA REJEITADA",
+    )
+
+    # 125
+    assert_test(
+        "unsupported_operational_consequence"
+        in correction_user_prompt
+        and "impede qualquer exposição"
+        in correction_user_prompt,
+        "AUTOCORREÇÃO RECEBE VIOLAÇÃO ESPECÍFICA DA BARREIRA",
+    )
+
+    # 126
+    assert_test(
+        "descreva somente o fato suportado"
+        in correction_user_prompt
+        and "formulação estritamente descritiva"
+        in correction_user_prompt,
+        "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
+    )
+
     # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 123 TESTES OK"
+        "CIO AI AGENT V1.5 — 126 TESTES OK"
     )
     print("=" * 70)
 
