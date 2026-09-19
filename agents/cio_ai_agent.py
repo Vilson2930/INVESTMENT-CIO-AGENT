@@ -18,7 +18,10 @@
 # - cria recomendações próprias de investimento;
 # - inventa causas para sinais produzidos pelos motores;
 # - generaliza causas entre ativos;
-# - declara convergência sem evidência comparável.
+# - declara convergência sem evidência comparável;
+# - infere causa a partir do nome de um status;
+# - cria quantificadores sem evidência explícita;
+# - transforma metodologia do motor em causa de sinal.
 #
 # ============================================================
 
@@ -40,7 +43,7 @@ except ImportError:
 # CONFIGURAÇÃO
 # ============================================================
 
-CIO_AI_VERSION = "1.2"
+CIO_AI_VERSION = "1.3"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -290,6 +293,14 @@ def build_ai_context(
             "do_not_generalize_causes_across_assets": True,
             "do_not_generalize_conditions_across_signals": True,
             "summary_must_preserve_evidence_scope": True,
+
+            # V1.3 — proteção contra inferência semântica residual.
+            "status_label_does_not_imply_cause": True,
+            "quantifiers_require_explicit_evidence": True,
+            "methodology_does_not_imply_signal_cause": True,
+            "methodology_does_not_imply_future_signal_change": True,
+            "do_not_infer_condition_from_status_name": True,
+            "do_not_create_group_statistics": True,
         },
     }
 
@@ -668,6 +679,197 @@ REGRAS OBRIGATÓRIAS:
     Se qualquer resposta não puder ser confirmada,
     não apresente a causa como explicação.
 
+51. O NOME OU RÓTULO DE UM STATUS NÃO PROVA SUA CAUSA.
+
+    Trate o status exatamente como informação de origem.
+
+    Exemplos:
+
+    "PRÉ-ENTRADA — AGUARDAR GATILHO"
+
+    permite afirmar somente que o sistema informou
+    PRÉ-ENTRADA e/ou AGUARDAR GATILHO, conforme estiver
+    estruturado no contexto.
+
+    Esse rótulo NÃO autoriza inferir automaticamente:
+    - falta de volume;
+    - ausência de fluxo institucional;
+    - necessidade de confirmação institucional;
+    - pullback;
+    - rompimento;
+    - momentum insuficiente;
+    - valuation inadequado;
+    - fundamentos insuficientes;
+    - ou qualquer outra causa.
+
+    Uma causa adicional somente pode ser mencionada quando
+    estiver explicitamente associada ao mesmo ativo ou sinal
+    no contexto.
+
+52. NÃO DERIVE CAUSA A PARTIR DA SEMÂNTICA DO STATUS.
+
+    Palavras existentes dentro do próprio status podem ser
+    reproduzidas como parte literal do status.
+
+    Porém, não converta essas palavras em uma explicação causal
+    mais ampla.
+
+    Exemplo:
+
+    STATUS:
+    "AGUARDAR GATILHO"
+
+    Permitido:
+    "O sistema classifica o ativo como AGUARDAR GATILHO."
+
+    Não permitido sem evidência adicional:
+    "O ativo aguarda aumento de volume para confirmar o gatilho."
+
+53. QUANTIFICADORES EXIGEM EVIDÊNCIA EXPLÍCITA.
+
+    Não use afirmações quantitativas ou distributivas como:
+    - todos;
+    - todas;
+    - a maioria;
+    - maior parte;
+    - predominantemente;
+    - principalmente;
+    - geralmente;
+    - em geral;
+    - quase todos;
+    - quase todas;
+    - grande parte;
+
+    para descrever causas, condições, justificativas,
+    características ou comportamentos de um conjunto,
+    salvo quando essa proporção estiver explicitamente
+    demonstrada pelo contexto.
+
+54. NÃO CRIE ESTATÍSTICA OU DISTRIBUIÇÃO IMPLÍCITA.
+
+    Não transforme uma lista de ativos em afirmações como:
+    - "a maioria aguarda confirmação";
+    - "predominam sinais condicionais";
+    - "geralmente falta volume";
+    - "grande parte depende de gatilho";
+
+    salvo quando o contexto fornecer contagem, proporção,
+    classificação agregada ou evidência equivalente que
+    sustente exatamente essa afirmação.
+
+    Se não houver essa evidência, descreva individualmente
+    os fatos relevantes ou utilize formulação neutra como:
+
+    "Há ativos com condições explicitamente registradas no
+    contexto."
+
+55. METODOLOGIA NÃO É CAUSA AUTOMÁTICA DO SINAL.
+
+    Termos que descrevem arquitetura ou metodologia de um
+    sistema, incluindo:
+    - Financial Strength;
+    - Growth;
+    - Valuation;
+    - Momentum;
+    - fundamentos;
+    - desconto;
+    - qualidade;
+    - ranking;
+    - score interno;
+    - filtro;
+    - peneira;
+
+    podem ser usados para explicar COMO o sistema é estruturado
+    quando essa informação estiver no contexto.
+
+    Eles NÃO podem ser apresentados automaticamente como a
+    causa específica de:
+    - ENTRADA;
+    - ENTRADA FORTE;
+    - AGUARDAR;
+    - NÃO COMPRAR;
+    - EVITAR;
+    - PRÉ-ENTRADA;
+    - mudança futura de sinal;
+    - ou qualquer decisão individual de um ticker.
+
+56. NÃO PREVEJA O QUE FARÁ UM SINAL MUDAR.
+
+    Não afirme que um ativo mudará de:
+    - AGUARDAR para ENTRADA;
+    - PRÉ-ENTRADA para ENTRADA;
+    - NÃO COMPRAR para COMPRAR;
+    - ou qualquer outro estado;
+
+    quando ocorrer:
+    - melhora de fundamentos;
+    - melhora de valuation;
+    - aumento de volume;
+    - confirmação institucional;
+    - pullback;
+    - rompimento;
+    - mudança de momentum;
+    - ou outra condição;
+
+    salvo quando essa relação condicional estiver explicitamente
+    registrada no contexto para o mesmo ativo ou sinal.
+
+57. NÃO USE A ARQUITETURA DO MOTOR PARA COMPLETAR LACUNAS.
+
+    Saber que um sistema utiliza Financial Strength, Growth,
+    Valuation, Momentum ou qualquer outro critério não autoriza
+    concluir que esse critério explica o sinal atual de um
+    ticker específico.
+
+    Quando o contexto informar apenas:
+    - metodologia do sistema; e
+    - sinal do ativo;
+
+    sem fornecer a ligação causal entre ambos, mantenha as
+    duas informações separadas.
+
+58. PRESERVE A DIFERENÇA ENTRE RÓTULO E EXPLICAÇÃO.
+
+    RÓTULO:
+    é o texto ou categoria produzido pelo sistema.
+
+    EXPLICAÇÃO:
+    é a causa explicitamente fornecida pelo contexto.
+
+    Nunca transforme automaticamente um rótulo em explicação.
+
+59. PRESERVE A DIFERENÇA ENTRE LISTA E ESTATÍSTICA.
+
+    Uma lista de ativos não é, por si só, uma estatística.
+
+    Não produza:
+    - maioria;
+    - minoria;
+    - predominância;
+    - proporção;
+    - frequência;
+    - percentual;
+
+    a partir da lista, salvo quando o contexto já fornecer
+    explicitamente essa agregação ou quando a tarefa exigir
+    apenas repetir uma contagem explicitamente fornecida.
+
+60. REGRA FINAL DE SEGURANÇA SEMÂNTICA.
+
+    Antes de escrever qualquer frase explicativa, causal,
+    quantitativa ou distributiva, verifique:
+
+    A) A informação está explicitamente no contexto?
+    B) Está vinculada ao mesmo ativo, sinal ou conjunto?
+    C) O status está sendo preservado como status?
+    D) A metodologia está sendo preservada como metodologia?
+    E) Existe evidência para qualquer palavra como "maioria",
+       "todos", "principalmente" ou equivalente?
+    F) A frase preserva exatamente o escopo da evidência?
+
+    Se qualquer resposta necessária não puder ser confirmada,
+    use uma formulação estritamente descritiva e não causal.
+
 OBJETIVO:
 
 Transformar os resultados dos sete sistemas em uma análise
@@ -678,8 +880,9 @@ A análise deve servir exclusivamente como apoio interpretativo
 à decisão humana.
 
 O Investment CIO AI deve ampliar a compreensão do conjunto
-sem criar uma nova decisão de investimento e sem ampliar
-o escopo das evidências recebidas.
+sem criar uma nova decisão de investimento, sem ampliar
+o escopo das evidências recebidas e sem preencher lacunas
+causais ou quantitativas por inferência.
 """.strip()
 
 
@@ -726,6 +929,9 @@ Não transporte causas entre ativos.
 Não transporte causas entre sinais.
 Não transforme exemplos em regra geral.
 Não transforme coexistência em convergência.
+Não transforme o nome de um status em causa.
+Não transforme metodologia do sistema em causa do sinal.
+Não use quantificadores sem evidência explícita.
 
 Estruture a resposta exatamente nas seguintes seções:
 
@@ -740,6 +946,10 @@ Não afirme que todas as oportunidades ou todos os sinais
 dependem de uma condição quando essa condição estiver
 documentada apenas para parte deles.
 
+Não utilize "maioria", "principalmente", "geralmente",
+"predominantemente" ou equivalentes para causas ou condições
+sem evidência explícita dessa distribuição no contexto.
+
 2. RELAÇÃO ENTRE OS SISTEMAS
 
 Explique como regime, risco global, seleção de ativos,
@@ -749,6 +959,9 @@ Utilize somente relações sustentadas pelo contexto.
 
 Não atribua causas específicas aos sinais sem evidência
 explícita para o mesmo ativo ou sinal.
+
+A metodologia de um sistema pode ser descrita como
+metodologia, mas não como causa automática de um sinal.
 
 3. CONVERGÊNCIAS
 
@@ -795,6 +1008,9 @@ de exposição.
 Não afirme que todas as oportunidades possuem condições
 pendentes apenas porque algumas possuem.
 
+Não transforme uma lista de oportunidades em uma estatística
+ou distribuição que o contexto não forneceu.
+
 6. MACRO X MICRO
 
 Relacione os motores macro e de risco com os motores de
@@ -817,6 +1033,24 @@ explicitamente informado para o mesmo ativo ou sinal.
 
 Uma condição associada a um ticker não pode ser transferida
 para outro ticker.
+
+IMPORTANTE:
+
+O nome do status não deve ser usado para inferir uma causa.
+
+Se o status for "PRÉ-ENTRADA — AGUARDAR GATILHO", preserve
+esse status literalmente.
+
+Não conclua que existe:
+- falta de volume;
+- necessidade de confirmação institucional;
+- pullback;
+- rompimento;
+- mudança de fundamentos;
+- mudança de valuation;
+
+salvo quando a condição estiver explicitamente vinculada
+ao mesmo ticker no contexto.
 
 Se a causa não estiver disponível, declare:
 
@@ -844,6 +1078,16 @@ rompimento ou confirmação institucional, limite a afirmação
 somente aos ativos para os quais essa condição estiver
 explicitamente presente.
 
+Não diga que "todos", "a maioria", "grande parte",
+"principalmente", "geralmente" ou "predominantemente"
+dependem de determinada condição sem evidência explícita
+dessa distribuição.
+
+Não afirme que Financial Strength, Growth, Valuation,
+Momentum ou outra metodologia determinará a mudança futura
+de um sinal, salvo quando essa relação estiver explicitamente
+presente para o mesmo ativo.
+
 Não crie novos indicadores ou scores.
 
 Não formule ordens, recomendações ou instruções de
@@ -868,7 +1112,19 @@ A síntese NÃO pode ampliar o escopo das evidências.
 
 Se apenas alguns ativos possuem gatilho, volume, pullback,
 rompimento ou confirmação explicitamente pendentes, diga
-"alguns ativos" e não "as oportunidades".
+apenas que existem ativos com essas condições explicitamente
+registradas.
+
+Não converta isso em:
+- "a maioria";
+- "todos";
+- "principalmente";
+- "predominantemente";
+- "geralmente";
+- "em geral";
+- "grande parte";
+
+sem evidência quantitativa ou distributiva explícita.
 
 Não diga que ENTRADA ou ENTRADA FORTE depende de confirmação
 adicional salvo quando isso estiver explicitamente informado
@@ -879,6 +1135,15 @@ Não use a causa de um ativo para explicar outro ativo.
 Não use a causa de um subconjunto para explicar todo o
 conjunto.
 
+Não transforme o nome de um status em explicação causal.
+
+Não transforme a metodologia de um sistema em explicação
+causal de um ticker específico.
+
+Não preveja quais fatores farão um sinal mudar de categoria,
+salvo quando essa relação estiver explicitamente registrada
+no contexto.
+
 A síntese NÃO pode:
 - recomendar compra;
 - recomendar venda;
@@ -888,7 +1153,8 @@ A síntese NÃO pode:
 - recomendar entrada ou saída;
 - criar regra operacional;
 - criar novo sinal;
-- criar novo score.
+- criar novo score;
+- criar estatística não fornecida pelo contexto.
 
 Não use a expressão "a recomendação é" para introduzir uma
 conclusão própria.
@@ -908,6 +1174,10 @@ evidência para ela.
 Quando uma causa estiver associada apenas a determinados
 ativos, preserve essa granularidade também na rastreabilidade.
 
+Quando uma afirmação quantitativa ou distributiva estiver
+presente, identifique a evidência do contexto que sustenta
+essa afirmação.
+
 Finalize obrigatoriamente declarando:
 
 - nenhum sinal quantitativo foi alterado;
@@ -918,6 +1188,11 @@ Finalize obrigatoriamente declarando:
 - nenhuma causalidade foi generalizada além da evidência
   explicitamente fornecida;
 - nenhuma convergência foi declarada sem evidência comparável;
+- nenhum status foi transformado automaticamente em causa;
+- nenhuma metodologia foi transformada automaticamente em
+  causa de sinal individual;
+- nenhum quantificador causal ou distributivo foi criado sem
+  evidência explícita;
 - nenhuma ordem foi executada;
 - a decisão final permanece humana.
 """.strip()
@@ -1193,6 +1468,17 @@ def run_cio_ai(
             "cross_asset_causal_generalization_allowed": False,
 
             "summary_evidence_scope_preserved": True,
+
+            # V1.3
+            "status_label_implies_cause": False,
+
+            "quantifiers_require_explicit_evidence": True,
+
+            "methodology_implies_signal_cause": False,
+
+            "methodology_implies_future_signal_change": False,
+
+            "group_statistics_may_be_invented": False,
 
             "broker_execution_allowed": False,
 
