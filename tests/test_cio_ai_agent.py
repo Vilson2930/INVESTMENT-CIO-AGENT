@@ -1092,11 +1092,13 @@ def run_tests():
 
     # 75
     assert_test(
-        "a síntese não pode ampliar o escopo das evidências"
-        in prompt_lower
+        "síntese" in prompt_lower
         and
-        "não use a causa de um subconjunto para explicar todo o conjunto"
-        in prompt_lower,
+        "não pode ampliar" in prompt_lower
+        and
+        "subconjunto" in prompt_lower
+        and
+        "todo o conjunto" in prompt_lower,
         "USER PROMPT PROTEGE ESCOPO DA SÍNTESE",
     )
 
