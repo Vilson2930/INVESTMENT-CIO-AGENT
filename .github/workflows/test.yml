@@ -71,3 +71,7 @@ jobs:
       - name: Test Risk Agent
         run: |
           python -m tests.test_risk_agent
+
+      - name: Test Decision Agent
+        run: |
+          python -m tests.test_decision_agent
