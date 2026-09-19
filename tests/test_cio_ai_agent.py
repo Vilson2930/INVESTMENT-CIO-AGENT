@@ -1630,11 +1630,11 @@ def run_tests():
 
     # 124
     assert_test(
-        "você não receberá a redação rejeitada"
+        "a redação rejeitada não é fornecida"
         in correction_user_prompt
-        and "não tente reconstruir, citar, explicar ou comentar"
+        and "reconstrua a análise integral do zero"
         in correction_user_prompt
-        and "faça uma nova análise integral exclusivamente"
+        and "contexto estruturado original"
         in correction_user_prompt,
         "AUTOCORREÇÃO RECONSTRÓI SEM REENVIAR RESPOSTA REJEITADA",
     )
@@ -1659,7 +1659,7 @@ def run_tests():
         in correction_user_prompt
         and "menor alcance"
         in correction_user_prompt
-        and "use exclusivamente o contexto original"
+        and "use exclusivamente o contexto estruturado original"
         in correction_user_prompt,
         "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
     )
@@ -1689,18 +1689,18 @@ def run_tests():
         client=production_client,
     )
 
+    production_call = production_client.completions.calls[1]
+    production_system_prompt = (
+        production_call["messages"][0]["content"].lower()
+    )
     production_prompt = (
-        production_client.completions.calls[1]
-        ["messages"][1]["content"].lower()
+        production_call["messages"][1]["content"].lower()
     )
 
     assert_test(
-        "unsupported_distributive_quantifier"
-        in production_prompt
-        and "unsupported_operational_consequence"
-        in production_prompt
-        and "unsupported_prescriptive_language"
-        in production_prompt,
+        "unsupported_distributive_quantifier" in production_prompt
+        and "unsupported_operational_consequence" in production_prompt
+        and "unsupported_prescriptive_language" in production_prompt,
         "AUTOCORREÇÃO RECEBE AS CLASSES DAS VIOLAÇÕES REAIS",
     )
 
@@ -1713,27 +1713,25 @@ def run_tests():
 
     assert_test(
         rejected_production_text not in production_prompt
-        and "a maioria dos sinais exige cautela"
-        not in production_prompt
-        and "o cenário deve ser considerado"
-        not in production_prompt,
+        and "a maioria dos sinais exige cautela" not in production_prompt
+        and "o cenário deve ser considerado" not in production_prompt,
         "RESPOSTA REJEITADA NÃO É REINJETADA NO PROMPT",
     )
 
     # 129
     assert_test(
         "limita exposição" not in production_prompt
-        and "impede entrada" not in production_prompt,
+        and "impede entrada" not in production_prompt
+        and "limita exposição" not in production_system_prompt
+        and "impede entrada" not in production_system_prompt,
         "DETALHES LITERAIS DA VIOLAÇÃO NÃO SÃO REINJETADOS",
     )
 
     # 130
     assert_test(
-        "não receberá a redação rejeitada"
-        in production_prompt
-        and "não receberá" in production_prompt
-        and "trechos textuais" in production_prompt
-        and "nova análise integral" in production_prompt,
+        "a redação rejeitada não é fornecida" in production_prompt
+        and "reconstrua a análise integral do zero" in production_prompt
+        and "contexto estruturado original" in production_prompt,
         "PROMPT EXPLICITA RECONSTRUÇÃO SEM TEXTO REJEITADO",
     )
 
@@ -1788,10 +1786,8 @@ def run_tests():
     )
 
     assert_test(
-        "unsupported_prescriptive_language"
-        in prescriptive_prompt
-        and "o cenário deve ser considerado"
-        not in prescriptive_prompt
+        "unsupported_prescriptive_language" in prescriptive_prompt
+        and "o cenário deve ser considerado" not in prescriptive_prompt
         and prescriptive_result["semantic_validation"]["status"] == "PASS",
         "PRESCRIÇÃO É CORRIGIDA SEM REINJETAR FRASE REJEITADA",
     )
@@ -1800,16 +1796,15 @@ def run_tests():
     assert_test(
         "a resposta deve conter somente a nova análise final"
         in production_prompt
-        and "não inclua:" in production_prompt
-        and "explicação sobre a correção" in production_prompt
-        and "comentário sobre a rejeição anterior" in production_prompt,
+        and "não explique o processo de correção"
+        in production_prompt
+        and "rejeição ou validação" in production_prompt,
         "AUTOCORREÇÃO PROÍBE METACOMENTÁRIO SOBRE REPARO",
     )
 
     # 135
     assert_test(
-        "prompt original e contexto:" in production_prompt
-        and "contexto original" in production_prompt
+        "contexto estruturado original:" in production_prompt
         and '"sp500_cycle"' in production_prompt
         and '"global_portfolio"' in production_prompt,
         "AUTOCORREÇÃO REUTILIZA CONTEXTO ORIGINAL DOS SISTEMAS",
@@ -1835,17 +1830,21 @@ def run_tests():
         client=contamination_client,
     )
 
+    contamination_call = contamination_client.completions.calls[1]
+    contamination_system_prompt = (
+        contamination_call["messages"][0]["content"].lower()
+    )
     contamination_prompt = (
-        contamination_client.completions.calls[1]
-        ["messages"][1]["content"].lower()
+        contamination_call["messages"][1]["content"].lower()
     )
 
     assert_test(
         contamination_result["semantic_validation"]["status"] == "PASS"
         and "a maioria dos sinais limita exposição e impede entrada"
         not in contamination_prompt
-        and "o cenário deve ser considerado"
-        not in contamination_prompt,
+        and "o cenário deve ser considerado" not in contamination_prompt
+        and "limita exposição" not in contamination_system_prompt
+        and "impede entrada" not in contamination_system_prompt,
         "CASO COMBINADO É RECONSTRUÍDO SEM CONTAMINAÇÃO TEXTUAL",
     )
 
