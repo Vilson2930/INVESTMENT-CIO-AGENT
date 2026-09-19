@@ -1583,9 +1583,8 @@ def run_tests():
         "classes de violação detectadas:" in correction_user_prompt
         and "unsupported_operational_consequence"
         in correction_user_prompt
-        and "não altere sinais" in correction_user_prompt
-        and "não altere scores" in correction_user_prompt
-        and "não altere rankings" in correction_user_prompt,
+        and "não altere sinais, scores, rankings ou decisões"
+        in correction_user_prompt,
         "PROMPT DE AUTOCORREÇÃO PRESERVA DADOS E SINAIS",
     )
 
