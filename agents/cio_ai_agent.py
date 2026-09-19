@@ -1606,6 +1606,106 @@ def validate_ai_analysis_semantics(
 
 
 # ============================================================
+# AUTOCORREÇÃO SEMÂNTICA CONTROLADA — V1.5
+# ============================================================
+
+def _build_semantic_correction_prompt(
+    original_prompt: str,
+    rejected_analysis: str,
+    validation_error: Exception,
+) -> str:
+    """
+    Solicita UMA reescrita da análise rejeitada.
+
+    A autocorreção:
+    - não altera o contexto;
+    - não altera sinais, scores, rankings ou decisões;
+    - não cria recomendação;
+    - apenas remove/reformula violações apontadas pela barreira.
+    """
+    return f"""
+A análise abaixo foi REJEITADA pela barreira de fidelidade semântica
+do INVESTMENT CIO AI.
+
+ERRO DA BARREIRA:
+{validation_error}
+
+ANÁLISE REJEITADA:
+{rejected_analysis}
+
+TAREFA DE CORREÇÃO:
+
+Reescreva a análise completa, preservando as mesmas 11 seções exigidas
+no prompt original e utilizando exclusivamente o contexto original.
+
+Corrija SOMENTE as violações apontadas pela barreira.
+
+REGRAS OBRIGATÓRIAS:
+- não acrescente fatos;
+- não acrescente causas;
+- não acrescente relações;
+- não acrescente recomendações;
+- não altere sinais;
+- não altere scores;
+- não altere rankings;
+- não transforme restrição em consequência operacional;
+- não use linguagem prescritiva própria;
+- não use quantificadores distributivos sem evidência explícita;
+- não transforme metodologia em timing;
+- não transforme status em causa;
+- não amplie o escopo da evidência;
+- preserve a decisão final humana.
+
+Se uma formulação rejeitada não puder ser sustentada diretamente pelo
+contexto, substitua-a por uma formulação estritamente descritiva.
+
+PROMPT ORIGINAL E CONTEXTO:
+{original_prompt}
+""".strip()
+
+
+def _request_nvidia_analysis(
+    client: Any,
+    selected_model: str,
+    user_prompt: str,
+) -> str:
+    """
+    Executa uma chamada NVIDIA NIM e devolve somente o texto validável.
+    """
+    try:
+        completion = client.chat.completions.create(
+            model=selected_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                },
+            ],
+            temperature=1.0,
+            top_p=0.95,
+            max_tokens=8192,
+            stream=False,
+            extra_body={
+                "chat_template_kwargs": {
+                    "enable_thinking": True,
+                    "low_effort": True,
+                }
+            },
+        )
+    except Exception as exc:
+        raise CIOAIResponseError(
+            "Falha na execução da NVIDIA NIM: "
+            f"{exc}"
+        ) from exc
+
+    return _extract_response_text(completion)
+
+
+# ============================================================
 # EXECUÇÃO DA INTELIGÊNCIA
 # ============================================================
 
@@ -1644,54 +1744,54 @@ def run_cio_ai(
             api_key=api_key
         )
 
+    # ========================================================
+    # 1ª GERAÇÃO NVIDIA
+    # ========================================================
+
+    analysis = _request_nvidia_analysis(
+        client,
+        selected_model,
+        prompt,
+    )
+
+    semantic_retry_used = False
+    first_semantic_rejection = None
+
+    # ========================================================
+    # BARREIRA + UMA AUTOCORREÇÃO CONTROLADA — V1.5
+    # ========================================================
+
     try:
-        completion = client.chat.completions.create(
-            model=selected_model,
-
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-
-            temperature=1.0,
-            top_p=0.95,
-
-            max_tokens=8192,
-
-            stream=False,
-
-            extra_body={
-                "chat_template_kwargs": {
-                    "enable_thinking": True,
-                    "low_effort": True,
-                }
-            },
+        semantic_validation = validate_ai_analysis_semantics(
+            analysis,
+            context,
         )
 
-    except Exception as exc:
-        raise CIOAIResponseError(
-            "Falha na execução da NVIDIA NIM: "
-            f"{exc}"
-        ) from exc
+    except CIOAISemanticValidationError as first_error:
+        semantic_retry_used = True
+        first_semantic_rejection = str(first_error)
 
-    analysis = _extract_response_text(
-        completion
-    )
+        correction_prompt = _build_semantic_correction_prompt(
+            prompt,
+            analysis,
+            first_error,
+        )
 
-    # ========================================================
-    # BARREIRA DE FIDELIDADE SEMÂNTICA — V1.5
-    # ========================================================
+        corrected_analysis = _request_nvidia_analysis(
+            client,
+            selected_model,
+            correction_prompt,
+        )
 
-    semantic_validation = validate_ai_analysis_semantics(
-        analysis,
-        context,
-    )
+        # Fail-safe final:
+        # se a segunda resposta continuar não conforme, a exceção
+        # é propagada e nenhum relatório é aceito/publicado.
+        semantic_validation = validate_ai_analysis_semantics(
+            corrected_analysis,
+            context,
+        )
+
+        analysis = corrected_analysis
 
     # ========================================================
     # IMUTABILIDADE
@@ -1739,9 +1839,14 @@ def run_cio_ai(
 
         "analysis": analysis,
 
-        "semantic_validation": _clone(
-            semantic_validation
-        ),
+        "semantic_validation": {
+            **_clone(semantic_validation),
+            "retry_used": semantic_retry_used,
+            "max_semantic_retries": 1,
+            "first_rejection_recorded": (
+                first_semantic_rejection is not None
+            ),
+        },
 
         "context_summary": {
             "pipeline_status": (
@@ -1852,6 +1957,12 @@ def run_cio_ai(
             "semantic_violations_accepted": False,
 
             "semantic_fail_safe_enabled": True,
+
+            "semantic_auto_correction_enabled": True,
+
+            "semantic_auto_correction_max_retries": 1,
+
+            "semantic_auto_correction_used": semantic_retry_used,
 
             "broker_execution_allowed": False,
 
