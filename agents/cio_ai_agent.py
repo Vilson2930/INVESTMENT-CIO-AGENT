@@ -21,7 +21,10 @@
 # - declara convergência sem evidência comparável;
 # - infere causa a partir do nome de um status;
 # - cria quantificadores sem evidência explícita;
-# - transforma metodologia do motor em causa de sinal.
+# - transforma metodologia do motor em causa de sinal;
+# - transforma metodologia/arquitetura em timing;
+# - transforma restrição em consequência operacional não fornecida;
+# - cria linguagem prescritiva sem atribuição explícita à fonte.
 #
 # ============================================================
 
@@ -43,7 +46,7 @@ except ImportError:
 # CONFIGURAÇÃO
 # ============================================================
 
-CIO_AI_VERSION = "1.3"
+CIO_AI_VERSION = "1.4"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -301,6 +304,12 @@ def build_ai_context(
             "methodology_does_not_imply_future_signal_change": True,
             "do_not_infer_condition_from_status_name": True,
             "do_not_create_group_statistics": True,
+
+            # V1.4 — proteção contra prescrição e confusão metodologia/timing.
+            "methodology_is_not_timing": True,
+            "restrictions_do_not_imply_operational_consequences": True,
+            "descriptive_analysis_must_not_become_prescriptive": True,
+            "prescriptive_language_requires_explicit_source_attribution": True,
         },
     }
 
@@ -870,6 +879,68 @@ REGRAS OBRIGATÓRIAS:
     Se qualquer resposta necessária não puder ser confirmada,
     use uma formulação estritamente descritiva e não causal.
 
+61. METODOLOGIA OU ARQUITETURA NÃO É TIMING.
+
+    Critérios, pesos, fórmulas, arquitetura, metodologia, ranking,
+    filtros ou composição do motor não podem ser chamados de:
+    - método de timing;
+    - condição de timing;
+    - gatilho de timing;
+    - causa do timing;
+    - explicação do timing;
+
+    salvo quando o contexto declarar explicitamente essa função.
+
+    Exemplo:
+    "10% Valuation + 80% Desconto + 10% Fundamentos"
+    deve permanecer descrito como metodologia ou arquitetura quando
+    essa for sua natureza no contexto.
+
+    Não o transforme em "método de timing" apenas porque aparece
+    próximo de um sinal como AGUARDAR.
+
+62. RESTRIÇÃO NÃO IMPLICA CONSEQUÊNCIA OPERACIONAL NOVA.
+
+    Kill Switch, Hard Block, risco crítico, liquidez frágil,
+    governança ou qualquer outra restrição devem ser descritos
+    exatamente conforme o contexto.
+
+    Não conclua, por inferência própria, que uma restrição:
+    - limita exposição;
+    - reduz exposição;
+    - impede entrada;
+    - exige saída;
+    - exige espera;
+    - exige preservação de capital;
+    - exige rebalanceamento;
+    - ou produz qualquer outra consequência operacional;
+
+    salvo quando essa consequência estiver explicitamente registrada
+    no contexto e atribuída à respectiva fonte.
+
+63. DESCRIÇÃO NÃO PODE VIRAR PRESCRIÇÃO.
+
+    O Investment CIO AI deve descrever estados, sinais, tensões,
+    restrições e relações sem criar obrigação para a decisão humana.
+
+    Não use formulações próprias como:
+    - "deve ser respeitado";
+    - "devem ser respeitadas";
+    - "deve ser considerado";
+    - "deve ser considerada";
+    - "deve limitar";
+    - "deve reduzir";
+    - "deve aumentar";
+    - "exige cautela";
+    - "exige acompanhamento";
+
+    quando essas formulações criarem orientação, obrigação ou
+    consequência não explicitamente fornecida pela fonte.
+
+    Quando houver orientação prescritiva explicitamente presente no
+    contexto, ela somente pode ser reproduzida com atribuição clara
+    ao sistema ou camada de origem.
+
 OBJETIVO:
 
 Transformar os resultados dos sete sistemas em uma análise
@@ -931,6 +1002,10 @@ Não transforme exemplos em regra geral.
 Não transforme coexistência em convergência.
 Não transforme o nome de um status em causa.
 Não transforme metodologia do sistema em causa do sinal.
+Não transforme metodologia ou arquitetura em timing.
+Não transforme restrição em consequência operacional não fornecida.
+Não transforme descrição em prescrição.
+Não use linguagem prescritiva própria sem atribuição explícita à fonte.
 Não use quantificadores sem evidência explícita.
 
 Estruture a resposta exatamente nas seguintes seções:
@@ -1034,6 +1109,11 @@ explicitamente informado para o mesmo ativo ou sinal.
 Uma condição associada a um ticker não pode ser transferida
 para outro ticker.
 
+Metodologia, arquitetura, pesos, critérios, filtros ou composição
+do motor não constituem timing e não podem ser chamados de
+"método de timing", "condição de timing" ou equivalente, salvo
+quando o próprio contexto declarar explicitamente essa função.
+
 IMPORTANTE:
 
 O nome do status não deve ser usado para inferir uma causa.
@@ -1066,12 +1146,24 @@ como constam no contexto.
 
 Não crie consequências operacionais adicionais.
 
+Não diga que uma restrição "limita exposição", "reduz exposição",
+"impede entrada", "exige espera" ou produz outra consequência
+operacional, salvo quando essa consequência estiver explicitamente
+registrada no contexto e atribuída à fonte.
+
 Não transforme as restrições em uma recomendação própria.
+
+Não use "deve ser respeitada", "devem ser respeitadas" ou
+formulações equivalentes como orientação própria do CIO AI.
 
 9. PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO
 
 Identifique fatos, estados, divergências, restrições e sinais
-já presentes no contexto que merecem acompanhamento.
+já presentes no contexto como pontos descritivos de observação.
+
+Não diga que um fato "exige acompanhamento", "exige cautela" ou
+impõe outra obrigação, salvo quando essa orientação estiver
+explicitamente presente no contexto e atribuída à fonte.
 
 Ao mencionar condições como volume, gatilho, pullback,
 rompimento ou confirmação institucional, limite a afirmação
@@ -1140,6 +1232,14 @@ Não transforme o nome de um status em explicação causal.
 Não transforme a metodologia de um sistema em explicação
 causal de um ticker específico.
 
+Não transforme metodologia ou arquitetura em timing.
+
+Não transforme restrições em consequências operacionais não
+explicitamente fornecidas pelo contexto.
+
+Não transforme a síntese descritiva em prescrição. Evite "deve",
+"devem", "exige" ou equivalentes quando criarem orientação própria.
+
 Não preveja quais fatores farão um sinal mudar de categoria,
 salvo quando essa relação estiver explicitamente registrada
 no contexto.
@@ -1193,6 +1293,12 @@ Finalize obrigatoriamente declarando:
   causa de sinal individual;
 - nenhum quantificador causal ou distributivo foi criado sem
   evidência explícita;
+- nenhuma metodologia ou arquitetura foi transformada em timing
+  sem evidência explícita;
+- nenhuma restrição foi transformada em consequência operacional
+  não fornecida pelo contexto;
+- nenhuma linguagem prescritiva própria foi criada sem atribuição
+  explícita à fonte;
 - nenhuma ordem foi executada;
 - a decisão final permanece humana.
 """.strip()
@@ -1479,6 +1585,15 @@ def run_cio_ai(
             "methodology_implies_future_signal_change": False,
 
             "group_statistics_may_be_invented": False,
+
+            # V1.4
+            "methodology_implies_timing": False,
+
+            "restrictions_imply_operational_consequences": False,
+
+            "ai_created_prescriptive_language_without_source": False,
+
+            "prescriptive_language_requires_source_attribution": True,
 
             "broker_execution_allowed": False,
 
