@@ -259,6 +259,91 @@ def _detect_global_restrictions(global_risk):
 
 
 # ============================================================
+# GLOBAL CONSTRAINT
+# ============================================================
+
+def _build_global_constraint(
+    global_risk,
+    restrictions,
+):
+    """
+    Constrói uma interface operacional de restrição global.
+
+    IMPORTANTE:
+    - não recalcula risco;
+    - não cria score;
+    - não altera sinais;
+    - não altera decisões dos motores;
+    - apenas organiza restrições já detectadas.
+    """
+
+    restriction_codes = _unique_list([
+        item.get("code")
+        for item in restrictions
+    ])
+
+    kill_switch_active = (
+        global_risk.get(
+            "global_kill_switch"
+        )
+        is True
+    )
+
+    hard_block = (
+        kill_switch_active
+        or "GLOBAL_KILL_SWITCH_ACTIVE"
+        in restriction_codes
+    )
+
+    if hard_block:
+        state = "HARD_RESTRICTION"
+
+    elif restrictions:
+        state = "RISK_RESTRICTION"
+
+    else:
+        state = "NO_GLOBAL_RESTRICTION"
+
+    return {
+        "state": state,
+
+        "hard_block": hard_block,
+
+        "global_kill_switch": (
+            global_risk.get(
+                "global_kill_switch"
+            )
+        ),
+
+        "global_risk_level": (
+            global_risk.get(
+                "global_risk_level"
+            )
+        ),
+
+        "global_survival_status": (
+            global_risk.get(
+                "global_survival_status"
+            )
+        ),
+
+        "restriction_codes": (
+            restriction_codes
+        ),
+
+        "restriction_count": (
+            len(restrictions)
+        ),
+
+        "source": "RISK_AGENT",
+
+        "source_signals_changed": False,
+
+        "source_decisions_overridden": False,
+    }
+
+
+# ============================================================
 # EVIDÊNCIAS DE SELEÇÃO E OPORTUNIDADES
 # ============================================================
 
@@ -417,7 +502,9 @@ def _build_risk_opportunity_context(
         has_restrictions
         and has_positive_entry
     ):
-        state = "OPPORTUNITY_UNDER_RISK_RESTRICTION"
+        state = (
+            "OPPORTUNITY_UNDER_RISK_RESTRICTION"
+        )
 
         interpretation = (
             "Existem sinais de entrada produzidos por "
@@ -435,7 +522,9 @@ def _build_risk_opportunity_context(
         )
 
     elif has_positive_entry:
-        state = "ENTRY_EVIDENCE_WITHOUT_GLOBAL_RESTRICTION"
+        state = (
+            "ENTRY_EVIDENCE_WITHOUT_GLOBAL_RESTRICTION"
+        )
 
         interpretation = (
             "Existem sinais de entrada produzidos por "
@@ -444,7 +533,9 @@ def _build_risk_opportunity_context(
         )
 
     else:
-        state = "NO_ENTRY_EVIDENCE_NO_GLOBAL_RESTRICTION"
+        state = (
+            "NO_ENTRY_EVIDENCE_NO_GLOBAL_RESTRICTION"
+        )
 
         interpretation = (
             "Não foi identificada coexistência de "
@@ -454,12 +545,15 @@ def _build_risk_opportunity_context(
 
     return {
         "state": state,
+
         "has_global_restrictions": (
             has_restrictions
         ),
+
         "has_positive_entry_evidence": (
             has_positive_entry
         ),
+
         "interpretation": interpretation,
     }
 
@@ -523,6 +617,13 @@ def assess_risk(synthesis):
         )
     )
 
+    global_constraint = (
+        _build_global_constraint(
+            global_risk,
+            restrictions,
+        )
+    )
+
     evidence = _extract_layer_evidence(
         synthesis
     )
@@ -572,6 +673,10 @@ def assess_risk(synthesis):
         ),
 
         "global_risk": global_risk,
+
+        "global_constraint": (
+            global_constraint
+        ),
 
         "restrictions": restrictions,
 
