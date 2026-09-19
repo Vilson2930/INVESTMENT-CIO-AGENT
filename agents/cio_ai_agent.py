@@ -16,7 +16,9 @@
 # - reordena rankings dos motores;
 # - executa operações financeiras;
 # - cria recomendações próprias de investimento;
-# - inventa causas para sinais produzidos pelos motores.
+# - inventa causas para sinais produzidos pelos motores;
+# - generaliza causas entre ativos;
+# - declara convergência sem evidência comparável.
 #
 # ============================================================
 
@@ -38,7 +40,7 @@ except ImportError:
 # CONFIGURAÇÃO
 # ============================================================
 
-CIO_AI_VERSION = "1.1"
+CIO_AI_VERSION = "1.2"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -275,13 +277,19 @@ def build_ai_context(
             "broker_execution_allowed": False,
             "human_decision_required": True,
 
-            # Governança semântica da IA.
             "ai_must_not_create_investment_recommendations": True,
             "ai_must_not_create_action_rules": True,
             "ai_must_not_invent_signal_causes": True,
             "ai_must_not_invent_cross_system_relationships": True,
             "explicit_evidence_required_for_causal_claims": True,
             "source_actions_must_be_attributed": True,
+
+            # V1.2 — proteção contra extrapolação semântica.
+            "convergence_requires_comparable_evidence": True,
+            "same_ticker_convergence_requires_same_ticker": True,
+            "do_not_generalize_causes_across_assets": True,
+            "do_not_generalize_conditions_across_signals": True,
+            "summary_must_preserve_evidence_scope": True,
         },
     }
 
@@ -460,19 +468,13 @@ REGRAS OBRIGATÓRIAS:
 
     somente podem ser apresentados como CAUSA de um sinal
     quando essa causa estiver explicitamente presente no
-    contexto recebido.
+    contexto recebido PARA AQUELE MESMO SINAL OU ATIVO.
 
 29. O papel conhecido de um sistema pode ser utilizado para
     explicar sua função estrutural.
 
     Porém, a função estrutural do sistema NÃO prova a causa
     específica de um sinal individual.
-
-    Exemplo:
-    saber que um sistema é um OPPORTUNITY_SCANNER não autoriza
-    afirmar que um ativo está em AGUARDAR por falta de volume,
-    fluxo ou gatilho, salvo se isso estiver explicitamente
-    informado no contexto.
 
 30. Uma relação entre dois sistemas ou entre dois sinais
     somente pode ser afirmada quando os elementos comparados
@@ -550,6 +552,122 @@ REGRAS OBRIGATÓRIAS:
     - autorização de exposição;
     - substituição dos motores quantitativos.
 
+41. CONVERGÊNCIA EXIGE EVIDÊNCIA COMPARÁVEL.
+
+    A simples existência de sinais positivos em sistemas
+    diferentes NÃO constitui convergência entre esses sistemas.
+
+    Exemplo:
+    se o Sistema A apresenta ENTRADA para o ticker X e o
+    Sistema B apresenta ENTRADA para o ticker Y, isso NÃO
+    constitui convergência por ativo entre A e B.
+
+    Para declarar convergência por ticker, o MESMO ticker
+    precisa aparecer nos sistemas comparados e os respectivos
+    sinais precisam estar explicitamente presentes no contexto.
+
+    Se os sistemas apenas apresentam sinais positivos para
+    ativos diferentes, descreva isso como coexistência de
+    sinais positivos, e NÃO como convergência por ticker.
+
+42. NÃO TRANSFIRA CAUSAS ENTRE ATIVOS.
+
+    Uma causa, condição, justificativa ou gatilho explicitamente
+    informado para um ticker não pode ser utilizado para
+    explicar o sinal de outro ticker.
+
+    Exemplo:
+    se o ticker X possui "aguardar confirmação de volume",
+    isso não autoriza afirmar que o ticker Y está em AGUARDAR
+    por falta de volume.
+
+43. NÃO TRANSFIRA CAUSAS ENTRE GRUPOS DE SINAIS.
+
+    A existência de alguns ativos aguardando:
+    - volume;
+    - gatilho;
+    - confirmação institucional;
+    - pullback;
+    - rompimento;
+
+    NÃO autoriza afirmar que todos os ativos em AGUARDAR,
+    PRÉ-ENTRADA, NÃO COMPRAR ou qualquer outra categoria
+    possuem a mesma causa.
+
+44. NÃO CONDICIONE SINAIS JÁ POSITIVOS SEM EVIDÊNCIA.
+
+    Se um ativo possui ENTRADA ou ENTRADA FORTE, não diga que
+    essa entrada ainda depende de gatilho, confirmação, volume,
+    pullback ou outra condição, salvo quando essa condição
+    estiver explicitamente vinculada ao mesmo ativo no contexto.
+
+45. NÃO CONFUNDA COEXISTÊNCIA COM CONVERGÊNCIA.
+
+    Sistemas diferentes podem simultaneamente apresentar
+    oportunidades ou sinais positivos em ativos distintos.
+
+    Isso é coexistência de evidências positivas.
+
+    Somente chame de convergência entre sistemas quando houver
+    uma dimensão explicitamente comparável e evidência
+    suficiente no contexto.
+
+46. TODA CAUSALIDADE DEVE PRESERVAR SEU ESCOPO.
+
+    Quando o contexto fornecer uma causa para um ativo ou
+    sinal específico, mantenha a causalidade limitada
+    exatamente àquele ativo ou sinal.
+
+    Não amplie:
+    "alguns ativos aguardam confirmação de volume"
+
+    para:
+    "as oportunidades aguardam confirmação de volume".
+
+47. A SÍNTESE CIO NÃO PODE AMPLIAR O ESCOPO DA EVIDÊNCIA.
+
+    A seção de síntese está sujeita às mesmas regras de
+    evidência das demais seções.
+
+    Uma causa válida em uma seção detalhada não pode ser
+    generalizada na síntese.
+
+    Na síntese:
+    - preserve a granularidade dos fatos;
+    - preserve a origem dos fatos;
+    - preserve o universo ao qual cada fato se aplica;
+    - não transforme exemplos em regra geral;
+    - não transforme subconjuntos em totalidade.
+
+48. Quando houver sinais com causas explícitas e sinais sem
+    causas explícitas no mesmo sistema ou conjunto, separe-os.
+
+    Exemplo de formulação permitida:
+
+    "Alguns sinais possuem condições explicitamente informadas
+    no contexto. Para os demais sinais, o contexto não fornece
+    evidência suficiente para atribuir uma causa específica."
+
+49. Antes de declarar CONVERGÊNCIA, verifique mentalmente:
+
+    A) Qual é a dimensão comparada?
+    B) Os dois fatos estão explicitamente no contexto?
+    C) Se a comparação for por ticker, é o mesmo ticker?
+    D) Os sinais são realmente comparáveis?
+
+    Se qualquer resposta não puder ser confirmada pelo
+    contexto, não declare convergência.
+
+50. Antes de apresentar uma CAUSA, verifique mentalmente:
+
+    A) A causa aparece explicitamente no contexto?
+    B) Está vinculada ao mesmo ticker ou sinal?
+    C) Não foi transportada de outro ativo?
+    D) Não foi generalizada de um subconjunto?
+
+    Se qualquer resposta não puder ser confirmada,
+    não apresente a causa como explicação.
+
 OBJETIVO:
 
 Transformar os resultados dos sete sistemas em uma análise
@@ -560,7 +678,8 @@ A análise deve servir exclusivamente como apoio interpretativo
 à decisão humana.
 
 O Investment CIO AI deve ampliar a compreensão do conjunto
-sem criar uma nova decisão de investimento.
+sem criar uma nova decisão de investimento e sem ampliar
+o escopo das evidências recebidas.
 """.strip()
 
 
@@ -597,6 +716,17 @@ Produza uma análise integrada dos sete sistemas.
 Sua tarefa é interpretar relações existentes no contexto.
 Não crie uma recomendação própria de investimento.
 
+REGRA DE ESCOPO:
+
+Cada afirmação causal deve permanecer vinculada exatamente
+ao ativo, sinal, sistema ou subconjunto para o qual existe
+evidência explícita.
+
+Não transporte causas entre ativos.
+Não transporte causas entre sinais.
+Não transforme exemplos em regra geral.
+Não transforme coexistência em convergência.
+
 Estruture a resposta exatamente nas seguintes seções:
 
 1. CONTEXTO GERAL
@@ -606,6 +736,10 @@ Explique o cenário conjunto identificado pelos sistemas.
 Diferencie claramente fatos produzidos pelos sistemas de
 interpretações relacionais produzidas pela análise.
 
+Não afirme que todas as oportunidades ou todos os sinais
+dependem de uma condição quando essa condição estiver
+documentada apenas para parte deles.
+
 2. RELAÇÃO ENTRE OS SISTEMAS
 
 Explique como regime, risco global, seleção de ativos,
@@ -614,21 +748,36 @@ timing e scanners de oportunidades se relacionam.
 Utilize somente relações sustentadas pelo contexto.
 
 Não atribua causas específicas aos sinais sem evidência
-explícita.
+explícita para o mesmo ativo ou sinal.
 
 3. CONVERGÊNCIAS
 
-Identifique apenas convergências sustentadas pelos dados.
+Identifique apenas convergências sustentadas por elementos
+explicitamente comparáveis.
 
-Não generalize a partir de exemplos isolados sem evidência
-suficiente.
+IMPORTANTE:
+
+A existência de ENTRADA ou ENTRADA FORTE em ativos diferentes
+de sistemas diferentes NÃO constitui, por si só, convergência
+entre os sistemas.
+
+Para convergência por ticker:
+- o mesmo ticker deve aparecer nos sistemas comparados;
+- os sinais comparados devem estar explicitamente presentes.
+
+Se houver apenas sinais positivos em ativos diferentes,
+descreva como coexistência de sinais positivos, não como
+convergência por ticker.
+
+Não generalize a partir de exemplos isolados.
 
 4. DIVERGÊNCIAS
 
-Identifique divergências reais.
+Identifique divergências reais e sustentadas pelo contexto.
 
 Explique se a divergência pode decorrer das funções diferentes
-dos sistemas.
+dos sistemas somente quando essa relação funcional estiver
+sustentada pelo contexto.
 
 Não invente a causa da divergência.
 
@@ -642,6 +791,9 @@ exatamente.
 
 Não transforme a relação risco x oportunidade em recomendação
 de exposição.
+
+Não afirme que todas as oportunidades possuem condições
+pendentes apenas porque algumas possuem.
 
 6. MACRO X MICRO
 
@@ -661,7 +813,10 @@ explicitamente comparáveis no contexto.
 Não altere os sinais originais.
 
 Não atribua um motivo ao timing se esse motivo não estiver
-explicitamente informado.
+explicitamente informado para o mesmo ativo ou sinal.
+
+Uma condição associada a um ticker não pode ser transferida
+para outro ticker.
 
 Se a causa não estiver disponível, declare:
 
@@ -684,6 +839,11 @@ Não transforme as restrições em uma recomendação própria.
 Identifique fatos, estados, divergências, restrições e sinais
 já presentes no contexto que merecem acompanhamento.
 
+Ao mencionar condições como volume, gatilho, pullback,
+rompimento ou confirmação institucional, limite a afirmação
+somente aos ativos para os quais essa condição estiver
+explicitamente presente.
+
 Não crie novos indicadores ou scores.
 
 Não formule ordens, recomendações ou instruções de
@@ -696,10 +856,28 @@ do cenário.
 
 A síntese deve explicar:
 - o que os sistemas mostram em conjunto;
-- onde convergem;
-- onde divergem;
+- onde existem convergências comprovadas;
+- onde existem divergências comprovadas;
+- onde há apenas coexistência de sinais;
 - como risco e oportunidade coexistem;
 - quais restrições permanecem ativas.
+
+REGRA CRÍTICA DA SÍNTESE:
+
+A síntese NÃO pode ampliar o escopo das evidências.
+
+Se apenas alguns ativos possuem gatilho, volume, pullback,
+rompimento ou confirmação explicitamente pendentes, diga
+"alguns ativos" e não "as oportunidades".
+
+Não diga que ENTRADA ou ENTRADA FORTE depende de confirmação
+adicional salvo quando isso estiver explicitamente informado
+para o mesmo ativo.
+
+Não use a causa de um ativo para explicar outro ativo.
+
+Não use a causa de um subconjunto para explicar todo o
+conjunto.
 
 A síntese NÃO pode:
 - recomendar compra;
@@ -727,6 +905,9 @@ conclusões.
 Não atribua uma conclusão a um sistema que não forneceu
 evidência para ela.
 
+Quando uma causa estiver associada apenas a determinados
+ativos, preserve essa granularidade também na rastreabilidade.
+
 Finalize obrigatoriamente declarando:
 
 - nenhum sinal quantitativo foi alterado;
@@ -734,6 +915,9 @@ Finalize obrigatoriamente declarando:
 - nenhum novo score quantitativo foi criado;
 - nenhuma recomendação própria de investimento foi criada
   pelo Investment CIO AI;
+- nenhuma causalidade foi generalizada além da evidência
+  explicitamente fornecida;
+- nenhuma convergência foi declarada sem evidência comparável;
 - nenhuma ordem foi executada;
 - a decisão final permanece humana.
 """.strip()
@@ -1002,6 +1186,14 @@ def run_cio_ai(
 
             "causal_claims_require_explicit_evidence": True,
 
+            "convergence_requires_comparable_evidence": True,
+
+            "causal_scope_must_be_preserved": True,
+
+            "cross_asset_causal_generalization_allowed": False,
+
+            "summary_evidence_scope_preserved": True,
+
             "broker_execution_allowed": False,
 
             "human_decision_required": True,
@@ -1038,6 +1230,7 @@ __all__ = [
     "NVIDIA_BASE_URL",
     "DEFAULT_MODEL",
     "OFFICIAL_SYSTEMS",
+    "SYSTEM_PROMPT",
     "CIOAIError",
     "CIOAIConfigurationError",
     "CIOAIInputError",
