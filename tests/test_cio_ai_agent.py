@@ -10,6 +10,7 @@ from agents.cio_ai_agent import (
     CIO_AI_VERSION,
     DEFAULT_MODEL,
     OFFICIAL_SYSTEMS,
+    SYSTEM_PROMPT,
     CIOAIInputError,
     CIOAIResponseError,
     validate_orchestrator_context,
@@ -347,7 +348,7 @@ def run_tests():
 
     print("=" * 70)
     print("INVESTMENT CIO AGENT")
-    print("TESTE — CIO AI AGENT V1 / NVIDIA NIM")
+    print("TESTE — CIO AI AGENT V1.1 / NVIDIA NIM")
     print("=" * 70)
 
     fixture = build_orchestrator_fixture()
@@ -359,8 +360,8 @@ def run_tests():
     # --------------------------------------------------------
 
     assert_test(
-        CIO_AI_VERSION == "1.0",
-        "IDENTIFICAÇÃO",
+        CIO_AI_VERSION == "1.1",
+        "IDENTIFICAÇÃO V1.1",
     )
 
     # --------------------------------------------------------
@@ -501,7 +502,7 @@ def run_tests():
     )
 
     # --------------------------------------------------------
-    # 15. POLÍTICA
+    # 15. POLÍTICA DE SEGURANÇA
     # --------------------------------------------------------
 
     assert_test(
@@ -514,7 +515,7 @@ def run_tests():
     )
 
     # --------------------------------------------------------
-    # 16. PROMPT
+    # 16. PROMPT RELACIONAL
     # --------------------------------------------------------
 
     prompt = build_ai_prompt(context)
@@ -684,7 +685,7 @@ def run_tests():
     )
 
     # --------------------------------------------------------
-    # 30. LISTA VAZIA / CONTEXTO VAZIO
+    # 30. CONTEXTO VAZIO
     # --------------------------------------------------------
 
     try:
@@ -796,13 +797,329 @@ def run_tests():
         "TRATAMENTO ERRO NVIDIA",
     )
 
+    # ========================================================
+    # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.1
+    # ========================================================
+
+    # --------------------------------------------------------
+    # 35. IA NÃO CRIA RECOMENDAÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["ai_must_not_create_investment_recommendations"]
+        is True,
+        "IA NÃO CRIA RECOMENDAÇÃO",
+    )
+
+    # --------------------------------------------------------
+    # 36. IA NÃO CRIA REGRA OPERACIONAL
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["ai_must_not_create_action_rules"]
+        is True,
+        "IA NÃO CRIA REGRA OPERACIONAL",
+    )
+
+    # --------------------------------------------------------
+    # 37. IA NÃO INVENTA CAUSA
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["ai_must_not_invent_signal_causes"]
+        is True,
+        "IA NÃO INVENTA CAUSA DE SINAL",
+    )
+
+    # --------------------------------------------------------
+    # 38. IA NÃO INVENTA RELAÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["ai_must_not_invent_cross_system_relationships"]
+        is True,
+        "IA NÃO INVENTA RELAÇÃO ENTRE SISTEMAS",
+    )
+
+    # --------------------------------------------------------
+    # 39. CAUSALIDADE EXIGE EVIDÊNCIA
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["explicit_evidence_required_for_causal_claims"]
+        is True,
+        "CAUSALIDADE EXIGE EVIDÊNCIA",
+    )
+
+    # --------------------------------------------------------
+    # 40. AÇÃO DE ORIGEM EXIGE ATRIBUIÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        context["mandatory_policy"]
+        ["source_actions_must_be_attributed"]
+        is True,
+        "AÇÃO DE ORIGEM EXIGE ATRIBUIÇÃO",
+    )
+
+    # --------------------------------------------------------
+    # 41. SYSTEM PROMPT PROÍBE RECOMENDAÇÃO PRÓPRIA
+    # --------------------------------------------------------
+
+    assert_test(
+        "NÃO CRIE RECOMENDAÇÕES PRÓPRIAS DE INVESTIMENTO"
+        in SYSTEM_PROMPT
+        and
+        "não funciona"
+        in SYSTEM_PROMPT
+        and
+        "oitavo motor"
+        in SYSTEM_PROMPT,
+        "PROMPT PROÍBE RECOMENDAÇÃO PRÓPRIA",
+    )
+
+    # --------------------------------------------------------
+    # 42. SYSTEM PROMPT PROÍBE CAUSA INVENTADA
+    # --------------------------------------------------------
+
+    assert_test(
+        "NÃO INVENTE A CAUSA DE UM SINAL"
+        in SYSTEM_PROMPT
+        and
+        "evidência explícita"
+        in SYSTEM_PROMPT,
+        "PROMPT PROÍBE CAUSA INVENTADA",
+    )
+
+    # --------------------------------------------------------
+    # 43. SYSTEM PROMPT EXIGE RELAÇÃO COM EVIDÊNCIA
+    # --------------------------------------------------------
+
+    assert_test(
+        "Uma relação entre dois sistemas"
+        in SYSTEM_PROMPT
+        and
+        "efetivamente presentes no contexto"
+        in SYSTEM_PROMPT,
+        "RELAÇÕES EXIGEM EVIDÊNCIA",
+    )
+
+    # --------------------------------------------------------
+    # 44. MESMO TICKER EXIGE PRESENÇA NOS SISTEMAS
+    # --------------------------------------------------------
+
+    assert_test(
+        "mesmo ticker"
+        in SYSTEM_PROMPT
+        and
+        "respectivos sistemas"
+        in SYSTEM_PROMPT,
+        "CRUZAMENTO DE TICKER EXIGE EVIDÊNCIA",
+    )
+
+    # --------------------------------------------------------
+    # 45. NÃO GENERALIZA POUCOS ATIVOS
+    # --------------------------------------------------------
+
+    assert_test(
+        "Não generalize a partir de poucos ativos"
+        in SYSTEM_PROMPT,
+        "SEM GENERALIZAÇÃO INDEVIDA",
+    )
+
+    # --------------------------------------------------------
+    # 46. FATO / RELAÇÃO / INTERPRETAÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        "FATO DE ORIGEM:" in SYSTEM_PROMPT
+        and
+        "RELAÇÃO:" in SYSTEM_PROMPT
+        and
+        "INTERPRETAÇÃO:" in SYSTEM_PROMPT,
+        "SEPARAÇÃO FATO RELAÇÃO INTERPRETAÇÃO",
+    )
+
+    # --------------------------------------------------------
+    # 47. SEM LINGUAGEM PRESCRITIVA PRÓPRIA
+    # --------------------------------------------------------
+
+    assert_test(
+        "Não use linguagem prescritiva própria"
+        in SYSTEM_PROMPT
+        and
+        '"a recomendação é"'
+        in SYSTEM_PROMPT
+        and
+        '"preserve capital"'
+        in SYSTEM_PROMPT,
+        "SEM LINGUAGEM PRESCRITIVA PRÓPRIA",
+    )
+
+    # --------------------------------------------------------
+    # 48. HARD BLOCK NÃO GERA DECISÃO DA IA
+    # --------------------------------------------------------
+
+    assert_test(
+        "Não transforme Kill Switch, Hard Block"
+        in SYSTEM_PROMPT
+        and
+        "recomendação nova criada por você"
+        in SYSTEM_PROMPT,
+        "HARD BLOCK NÃO GERA RECOMENDAÇÃO DA IA",
+    )
+
+    # --------------------------------------------------------
+    # 49. OPORTUNIDADE + RESTRIÇÃO = COEXISTÊNCIA
+    # --------------------------------------------------------
+
+    assert_test(
+        "descreva a"
+        in SYSTEM_PROMPT
+        and
+        "coexistência"
+        in SYSTEM_PROMPT
+        and
+        "Não resolva essa tensão criando uma decisão própria"
+        in SYSTEM_PROMPT,
+        "RISCO E OPORTUNIDADE SEM DECISÃO INVENTADA",
+    )
+
+    # --------------------------------------------------------
+    # 50. AUSÊNCIA DE EVIDÊNCIA DEVE SER DECLARADA
+    # --------------------------------------------------------
+
+    assert_test(
+        "não fornece evidência"
+        in SYSTEM_PROMPT
+        and
+        "causa específica"
+        in SYSTEM_PROMPT,
+        "AUSÊNCIA DE EVIDÊNCIA DECLARADA",
+    )
+
+    # --------------------------------------------------------
+    # 51. SÍNTESE CIO NÃO É NOVO MOTOR
+    # --------------------------------------------------------
+
+    assert_test(
+        "A SÍNTESE CIO é uma síntese interpretativa"
+        in SYSTEM_PROMPT
+        and
+        "novo sinal"
+        in SYSTEM_PROMPT
+        and
+        "novo score"
+        in SYSTEM_PROMPT,
+        "SÍNTESE CIO SOMENTE INTERPRETATIVA",
+    )
+
+    # --------------------------------------------------------
+    # 52. USER PROMPT PROÍBE RECOMENDAÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        "Não crie uma recomendação própria de investimento"
+        in prompt
+        and
+        "A síntese NÃO pode:"
+        in prompt,
+        "USER PROMPT SEM RECOMENDAÇÃO PRÓPRIA",
+    )
+
+    # --------------------------------------------------------
+    # 53. USER PROMPT PROÍBE CAUSA DE TIMING INVENTADA
+    # --------------------------------------------------------
+
+    assert_test(
+        "Não atribua um motivo ao timing"
+        in prompt
+        and
+        "não fornece"
+        in prompt
+        and
+        "causa específica"
+        in prompt,
+        "USER PROMPT SEM CAUSA DE TIMING INVENTADA",
+    )
+
+    # --------------------------------------------------------
+    # 54. USER PROMPT PRESERVA RESTRIÇÕES
+    # --------------------------------------------------------
+
+    assert_test(
+        "Kill Switch e Hard Block devem ser apresentados exatamente"
+        in prompt
+        and
+        "Não crie consequências operacionais adicionais"
+        in prompt,
+        "USER PROMPT PRESERVA GOVERNANÇA",
+    )
+
+    # --------------------------------------------------------
+    # 55. RESULTADO DECLARA SEM RECOMENDAÇÃO DA IA
+    # --------------------------------------------------------
+
+    assert_test(
+        result["policy"]
+        ["ai_created_investment_recommendation"]
+        is False,
+        "RESULTADO SEM RECOMENDAÇÃO DA IA",
+    )
+
+    # --------------------------------------------------------
+    # 56. RESULTADO DECLARA SEM REGRA DE AÇÃO
+    # --------------------------------------------------------
+
+    assert_test(
+        result["policy"]
+        ["ai_created_action_rule"]
+        is False,
+        "RESULTADO SEM REGRA DE AÇÃO",
+    )
+
+    # --------------------------------------------------------
+    # 57. RESULTADO EXIGE EVIDÊNCIA CAUSAL
+    # --------------------------------------------------------
+
+    assert_test(
+        result["policy"]
+        ["causal_claims_require_explicit_evidence"]
+        is True,
+        "RESULTADO EXIGE EVIDÊNCIA CAUSAL",
+    )
+
+    # --------------------------------------------------------
+    # 58. PROMPT ENVIADO À NVIDIA CONTÉM GOVERNANÇA V1.1
+    # --------------------------------------------------------
+
+    sent_system_prompt = call["messages"][0]["content"]
+    sent_user_prompt = call["messages"][1]["content"]
+
+    assert_test(
+        "NÃO CRIE RECOMENDAÇÕES PRÓPRIAS DE INVESTIMENTO"
+        in sent_system_prompt
+        and
+        "NÃO INVENTE A CAUSA DE UM SINAL"
+        in sent_system_prompt
+        and
+        "Não crie uma recomendação própria de investimento"
+        in sent_user_prompt,
+        "NVIDIA RECEBE GOVERNANÇA V1.1",
+    )
+
     # --------------------------------------------------------
     # RESULTADO FINAL
     # --------------------------------------------------------
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1 — 34 TESTES OK"
+        "CIO AI AGENT V1.1 — 58 TESTES OK"
     )
     print("=" * 70)
 
