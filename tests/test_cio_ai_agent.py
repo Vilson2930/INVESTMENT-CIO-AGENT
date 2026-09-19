@@ -348,7 +348,7 @@ def run_tests():
 
     print("=" * 70)
     print("INVESTMENT CIO AGENT")
-    print("TESTE — CIO AI AGENT V1.3 / NVIDIA NIM")
+    print("TESTE — CIO AI AGENT V1.4 / NVIDIA NIM")
     print("=" * 70)
 
     fixture = build_orchestrator_fixture()
@@ -357,8 +357,8 @@ def run_tests():
 
     # 1
     assert_test(
-        CIO_AI_VERSION == "1.3",
-        "IDENTIFICAÇÃO V1.3",
+        CIO_AI_VERSION == "1.4",
+        "IDENTIFICAÇÃO V1.4",
     )
 
     # 2
@@ -1276,12 +1276,91 @@ def run_tests():
     )
 
     # ========================================================
+    # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.4
+    # ========================================================
+
+    # 98
+    assert_test(
+        context["mandatory_policy"]["methodology_is_not_timing"] is True,
+        "METODOLOGIA OU ARQUITETURA NÃO É TIMING",
+    )
+
+    # 99
+    assert_test(
+        context["mandatory_policy"]["restrictions_do_not_imply_operational_consequences"] is True,
+        "RESTRIÇÃO NÃO IMPLICA CONSEQUÊNCIA OPERACIONAL",
+    )
+
+    # 100
+    assert_test(
+        context["mandatory_policy"]["descriptive_analysis_must_not_become_prescriptive"] is True
+        and context["mandatory_policy"]["prescriptive_language_requires_explicit_source_attribution"] is True,
+        "DESCRIÇÃO NÃO VIRA PRESCRIÇÃO",
+    )
+
+    # 101
+    assert_test(
+        "metodologia ou arquitetura não é timing" in system_prompt_lower
+        and "não o transforme em \"método de timing\"" in system_prompt_lower,
+        "PROMPT SEPARA METODOLOGIA DE TIMING",
+    )
+
+    # 102
+    assert_test(
+        "restrição não implica consequência operacional nova" in system_prompt_lower
+        and "limita exposição" in system_prompt_lower
+        and "salvo quando essa consequência estiver explicitamente registrada" in system_prompt_lower,
+        "PROMPT PROÍBE CONSEQUÊNCIA OPERACIONAL INVENTADA",
+    )
+
+    # 103
+    assert_test(
+        "descrição não pode virar prescrição" in system_prompt_lower
+        and "prescriptive_language_requires_explicit_source_attribution" not in system_prompt_lower
+        and "devem ser respeitadas" in system_prompt_lower,
+        "PROMPT PROÍBE PRESCRIÇÃO PRÓPRIA",
+    )
+
+    # 104
+    assert_test(
+        "não transforme metodologia ou arquitetura em timing" in prompt_lower
+        and "não transforme restrição em consequência operacional não fornecida" in prompt_lower
+        and "não transforme descrição em prescrição" in prompt_lower,
+        "USER PROMPT RECEBE TRAVAS V1.4",
+    )
+
+    # 105
+    assert_test(
+        result["policy"]["methodology_implies_timing"] is False
+        and result["policy"]["restrictions_imply_operational_consequences"] is False,
+        "RESULTADO SEPARA TIMING E CONSEQUÊNCIA OPERACIONAL",
+    )
+
+    # 106
+    assert_test(
+        result["policy"]["ai_created_prescriptive_language_without_source"] is False
+        and result["policy"]["prescriptive_language_requires_source_attribution"] is True,
+        "RESULTADO PROÍBE PRESCRIÇÃO SEM FONTE",
+    )
+
+    # 107
+    assert_test(
+        "metodologia ou arquitetura não é timing" in sent_system_prompt
+        and "restrição não implica consequência operacional nova" in sent_system_prompt
+        and "descrição não pode virar prescrição" in sent_system_prompt
+        and "não transforme metodologia ou arquitetura em timing" in sent_user_prompt
+        and "não transforme restrição em consequência operacional não fornecida" in sent_user_prompt
+        and "não transforme descrição em prescrição" in sent_user_prompt,
+        "NVIDIA RECEBE GOVERNANÇA V1.4",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.3 — 97 TESTES OK"
+        "CIO AI AGENT V1.4 — 107 TESTES OK"
     )
     print("=" * 70)
 
