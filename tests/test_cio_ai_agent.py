@@ -58,6 +58,9 @@ class FakeCompletions:
         else:
             response_content = self.content
 
+        if isinstance(response_content, Exception):
+            raise response_content
+
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
@@ -1578,8 +1581,8 @@ def run_tests():
 
     assert_test(
         "análise abaixo foi rejeitada" in correction_user_prompt
-        and "violações detectadas pela barreira" in correction_user_prompt
-        and "a correção deve eliminar todas as violações" in correction_user_prompt
+        and "termos/formulações proibidos na resposta corrigida"
+        in correction_user_prompt
         and "não altere sinais" in correction_user_prompt
         and "não altere scores" in correction_user_prompt
         and "não altere rankings" in correction_user_prompt,
@@ -1627,11 +1630,12 @@ def run_tests():
 
     # 124
     assert_test(
-        "limita exposição" in correction_user_prompt
-        and "restringe exposição" in correction_user_prompt
+        "impede qualquer exposição" in correction_user_prompt
         and "não tente contornar a barreira com sinônimos"
+        in correction_user_prompt
+        and "nenhuma formulação listada acima pode aparecer"
         in correction_user_prompt,
-        "AUTOCORREÇÃO PROÍBE PARÁFRASE DA CONSEQUÊNCIA REJEITADA",
+        "AUTOCORREÇÃO PROÍBE REPETIÇÃO E PARÁFRASE DA VIOLAÇÃO",
     )
 
     # 125
@@ -1647,12 +1651,268 @@ def run_tests():
     assert_test(
         "descreva somente o fato suportado"
         in correction_user_prompt
-        and "prefira formulação estritamente"
+        and "prefira formulação estritamente descritiva"
         in correction_user_prompt
-        and "descritiva e de menor alcance semântico"
+        and "menor alcance"
         in correction_user_prompt,
         "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
     )
+
+    # ========================================================
+    # TESTES DE PRODUÇÃO — LISTA DINÂMICA / METACOMENTÁRIO
+    # ========================================================
+
+    # 127
+    production_client = FakeNVIDIAClient(
+        contents=[
+            (
+                "A maioria dos sinais exige cautela. "
+                "A restrição limita exposição e impede entrada. "
+                "O cenário deve ser considerado."
+            ),
+            (
+                "Há sinais distintos registrados no contexto. "
+                "Há uma restrição global registrada. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    production_result = run_cio_ai(
+        fixture,
+        client=production_client,
+    )
+
+    production_prompt = (
+        production_client.completions.calls[1]
+        ["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        "a maioria" in production_prompt
+        and "limita exposicao" in production_prompt
+        and "impede entrada" in production_prompt
+        and "deve ser considerado" in production_prompt,
+        "LISTA DINÂMICA RECEBE VIOLAÇÕES REAIS DE PRODUÇÃO",
+    )
+
+    # 128
+    assert_test(
+        "citações" in production_prompt
+        and "exemplos" in production_prompt
+        and "metacomentários" in production_prompt
+        and "declaração final de conformidade" in production_prompt,
+        "TERMOS PROIBIDOS NÃO PODEM APARECER EM METACOMENTÁRIO",
+    )
+
+    # 129
+    try:
+        validate_ai_analysis_semantics(
+            (
+                'A expressão "a maioria" seria não suportada; '
+                "por isso não foi utilizada como conclusão."
+            ),
+            context,
+        )
+        raise AssertionError(
+            "Metacomentário com quantificador proibido deveria ser bloqueado."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "BARREIRA BLOQUEIA QUANTIFICADOR MESMO EM METACOMENTÁRIO",
+    )
+
+    # 130
+    assert_test(
+        production_result["status"] == "OK"
+        and production_result["semantic_validation"]["status"] == "PASS"
+        and production_result["semantic_validation"]["retry_used"] is True
+        and len(production_client.completions.calls) == 2,
+        "AUTOCORREÇÃO DINÂMICA RECUPERA CASO REAL DE PRODUÇÃO",
+    )
+
+    # 131
+    assert_test(
+        "a resposta deve conter somente a análise corrigida"
+        in production_prompt
+        and "não explique:" in production_prompt
+        and "que houve correção" in production_prompt
+        and "quais termos foram removidos" in production_prompt,
+        "AUTOCORREÇÃO PROÍBE EXPLICAÇÃO DA PRÓPRIA CORREÇÃO",
+    )
+
+    # 132
+    prescriptive_client = FakeNVIDIAClient(
+        contents=[
+            "O cenário deve ser considerado.",
+            (
+                "Há um cenário registrado no contexto. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    prescriptive_result = run_cio_ai(
+        fixture,
+        client=prescriptive_client,
+    )
+
+    prescriptive_prompt = (
+        prescriptive_client.completions.calls[1]
+        ["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        "deve ser considerado" in prescriptive_prompt
+        and prescriptive_result["semantic_validation"]["status"] == "PASS",
+        "AUTOCORREÇÃO TRATA PRESCRIÇÃO REAL DEVE SER CONSIDERADO",
+    )
+
+    # ========================================================
+    # TESTES DE RESILIÊNCIA NVIDIA — HTTP 503
+    # ========================================================
+
+    class Fake503Error(Exception):
+        status_code = 503
+
+    import agents.cio_ai_agent as cio_ai_module
+
+    original_sleep = cio_ai_module.time.sleep
+    sleep_calls = []
+    cio_ai_module.time.sleep = lambda seconds: sleep_calls.append(seconds)
+
+    try:
+        # 133 — um 503 e depois sucesso
+        retry_once_client = FakeNVIDIAClient(
+            contents=[
+                Fake503Error("Service temporarily overloaded"),
+                (
+                    "Os sistemas apresentam sinais distintos. "
+                    "A decisão final permanece humana."
+                ),
+            ]
+        )
+
+        retry_once_result = run_cio_ai(
+            fixture,
+            client=retry_once_client,
+        )
+
+        assert_test(
+            retry_once_result["status"] == "OK"
+            and len(retry_once_client.completions.calls) == 2
+            and sleep_calls == [10],
+            "NVIDIA 503 RECUPERA NA SEGUNDA TENTATIVA",
+        )
+
+        # 134 — dois 503 e depois sucesso
+        sleep_calls.clear()
+        retry_twice_client = FakeNVIDIAClient(
+            contents=[
+                Fake503Error("Service Unavailable"),
+                Fake503Error("error code: 503"),
+                (
+                    "Os sistemas apresentam sinais distintos. "
+                    "A decisão final permanece humana."
+                ),
+            ]
+        )
+
+        retry_twice_result = run_cio_ai(
+            fixture,
+            client=retry_twice_client,
+        )
+
+        assert_test(
+            retry_twice_result["status"] == "OK"
+            and len(retry_twice_client.completions.calls) == 3
+            and sleep_calls == [10, 30],
+            "NVIDIA 503 RECUPERA NA TERCEIRA TENTATIVA",
+        )
+
+        # 135 — três 503: fail-safe
+        sleep_calls.clear()
+        retry_fail_client = FakeNVIDIAClient(
+            contents=[
+                Fake503Error("Service Unavailable"),
+                Fake503Error("Service temporarily overloaded"),
+                Fake503Error("error code: 503"),
+            ]
+        )
+
+        try:
+            run_cio_ai(
+                fixture,
+                client=retry_fail_client,
+            )
+            raise AssertionError(
+                "Três erros 503 deveriam encerrar em fail-safe."
+            )
+        except CIOAIResponseError:
+            pass
+
+        assert_test(
+            len(retry_fail_client.completions.calls) == 3
+            and sleep_calls == [10, 30],
+            "NVIDIA 503 PERSISTENTE FALHA APÓS TRÊS TENTATIVAS",
+        )
+
+        # 136 — erro não 503: não repetir
+        sleep_calls.clear()
+        non_503_client = FakeNVIDIAClient(
+            contents=[
+                RuntimeError("erro permanente de autenticação")
+            ]
+        )
+
+        try:
+            run_cio_ai(
+                fixture,
+                client=non_503_client,
+            )
+            raise AssertionError(
+                "Erro não 503 deveria falhar sem retry técnico."
+            )
+        except CIOAIResponseError:
+            pass
+
+        assert_test(
+            len(non_503_client.completions.calls) == 1
+            and sleep_calls == [],
+            "ERRO NVIDIA NÃO 503 NÃO É REPETIDO",
+        )
+
+        # 137 — 503 durante a única autocorreção semântica
+        sleep_calls.clear()
+        semantic_503_client = FakeNVIDIAClient(
+            contents=[
+                "O cenário deve ser considerado.",
+                Fake503Error("Service temporarily overloaded"),
+                (
+                    "Há um cenário registrado no contexto. "
+                    "A decisão final permanece humana."
+                ),
+            ]
+        )
+
+        semantic_503_result = run_cio_ai(
+            fixture,
+            client=semantic_503_client,
+        )
+
+        assert_test(
+            semantic_503_result["status"] == "OK"
+            and semantic_503_result["semantic_validation"]["retry_used"] is True
+            and len(semantic_503_client.completions.calls) == 3
+            and sleep_calls == [10],
+            "503 NA AUTOCORREÇÃO PRESERVA UMA ÚNICA TENTATIVA SEMÂNTICA",
+        )
+
+    finally:
+        cio_ai_module.time.sleep = original_sleep
 
     # ========================================================
     # RESULTADO FINAL
@@ -1660,7 +1920,7 @@ def run_tests():
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 126 TESTES OK"
+        "CIO AI AGENT V1.5 — 137 TESTES OK"
     )
     print("=" * 70)
 
