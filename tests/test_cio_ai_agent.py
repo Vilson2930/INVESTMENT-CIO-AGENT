@@ -1640,13 +1640,19 @@ def run_tests():
     )
 
     # 125
+    detected_classes_block = (
+        correction_user_prompt
+        .split("classes de violação detectadas:", 1)[1]
+        .split("importante:", 1)[0]
+    )
+
     assert_test(
         "unsupported_operational_consequence"
-        in correction_user_prompt
+        in detected_classes_block
         and "unsupported_prescriptive_language"
-        not in correction_user_prompt
+        not in detected_classes_block
         and "unsupported_distributive_quantifier"
-        not in correction_user_prompt,
+        not in detected_classes_block,
         "AUTOCORREÇÃO RECEBE SOMENTE CLASSE REAL DA VIOLAÇÃO",
     )
 
