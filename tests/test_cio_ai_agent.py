@@ -4,6 +4,7 @@
 # ============================================================
 
 from copy import deepcopy
+import json
 from types import SimpleNamespace
 
 from agents.cio_ai_agent import (
@@ -14,9 +15,12 @@ from agents.cio_ai_agent import (
     CIOAIInputError,
     CIOAIResponseError,
     CIOAISemanticValidationError,
+    CIOAIStructuralValidationError,
+    REQUIRED_REPORT_SECTIONS,
     validate_orchestrator_context,
     build_ai_context,
     build_ai_prompt,
+    validate_ai_analysis_structure,
     validate_ai_analysis_semantics,
     run_cio_ai,
     analyze_cio_context,
@@ -26,6 +30,25 @@ from agents.cio_ai_agent import (
 # ============================================================
 # CLIENTE NVIDIA SIMULADO
 # ============================================================
+
+def _as_structural_report(content):
+    """Mantém os testes semânticos isolados da nova barreira estrutural."""
+    if not isinstance(content, str) or not content.strip():
+        return content
+    sections = (
+        "CONTEXTO GERAL", "RELAÇÃO ENTRE OS SISTEMAS", "CONVERGÊNCIAS",
+        "DIVERGÊNCIAS", "RISCO X OPORTUNIDADE", "MACRO X MICRO",
+        "SELEÇÃO X TIMING", "RESTRIÇÕES E GOVERNANÇA",
+        "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", "SÍNTESE CIO",
+        "RASTREABILIDADE",
+    )
+    if all(section in content for section in sections):
+        return content
+    blocks = []
+    for index, section in enumerate(sections, 1):
+        body = content if index == 1 else "Informação preservada conforme o contexto fornecido."
+        blocks.append(f"{index}. {section}\n{body}")
+    return "\n\n".join(blocks)
 
 class FakeCompletions:
 
@@ -60,6 +83,8 @@ class FakeCompletions:
 
         if isinstance(response_content, Exception):
             raise response_content
+
+        response_content = _as_structural_report(response_content)
 
         return SimpleNamespace(
             choices=[
@@ -550,8 +575,8 @@ def run_tests():
 
     # 21
     assert_test(
-        result["analysis"]
-        == "Análise integrada simulada dos sete sistemas.",
+        "Análise integrada simulada dos sete sistemas."
+        in result["analysis"],
         "ANÁLISE RETORNADA",
     )
 
@@ -1590,11 +1615,11 @@ def run_tests():
 
     # 121
     assert_test(
-        corrected_result["analysis"]
-        == (
+        (
             "Há uma restrição global de risco registrada no contexto. "
             "A decisão final permanece humana."
-        ),
+        )
+        in corrected_result["analysis"],
         "RESULTADO PUBLICA SOMENTE ANÁLISE CORRIGIDA E VALIDADA",
     )
 
@@ -1999,12 +2024,122 @@ def run_tests():
         cio_ai_module.time.sleep = original_sleep
 
     # ========================================================
+    # TESTES 143–149 — BARREIRA ESTRUTURAL DO RELATÓRIO REAL
+    # ========================================================
+
+    structural_report = _as_structural_report(
+        "Relatório CIO estruturalmente completo. A decisão final permanece humana."
+    )
+    structural_pass = validate_ai_analysis_structure(structural_report)
+    assert_test(
+        structural_pass["status"] == "PASS"
+        and structural_pass["sections_found"] == 11
+        and structural_pass["required_sections"] == 11,
+        "BARREIRA ESTRUTURAL ACEITA RELATÓRIO COMPLETO",
+    )
+
+    context_dump = json.dumps(
+        build_ai_context(fixture),
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+    try:
+        validate_ai_analysis_structure(context_dump)
+        context_dump_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        context_dump_blocked = "STRUCTURAL_CONTEXT_DUMP" in str(exc)
+    assert_test(
+        context_dump_blocked,
+        "BARREIRA ESTRUTURAL BLOQUEIA REPRODUÇÃO DO CONTEXTO JSON",
+    )
+
+    truncated_report = """
+1. CONTEXTO GERAL
+Relatório iniciado.
+
+2. RELAÇÃO ENTRE OS SISTEMAS
+Relação parcial.
+
+3. CONVERGÊNCIAS
+Conteúdo interrompido antes das demais seções.
+""".strip()
+    try:
+        validate_ai_analysis_structure(truncated_report)
+        truncated_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        truncated_blocked = "STRUCTURAL_MISSING_SECTION" in str(exc)
+    assert_test(
+        truncated_blocked,
+        "BARREIRA ESTRUTURAL BLOQUEIA RELATÓRIO TRUNCADO",
+    )
+
+    wrong_order_report = structural_report.replace(
+        "2. RELAÇÃO ENTRE OS SISTEMAS",
+        "TEMP_RELATION",
+    ).replace(
+        "3. CONVERGÊNCIAS",
+        "2. RELAÇÃO ENTRE OS SISTEMAS",
+    ).replace(
+        "TEMP_RELATION",
+        "3. CONVERGÊNCIAS",
+    )
+    try:
+        validate_ai_analysis_structure(wrong_order_report)
+        wrong_order_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        wrong_order_blocked = "STRUCTURAL_SECTION_ORDER" in str(exc)
+    assert_test(
+        wrong_order_blocked,
+        "BARREIRA ESTRUTURAL BLOQUEIA SEÇÕES FORA DE ORDEM",
+    )
+
+    empty_section_report = structural_report.replace(
+        "10. SÍNTESE CIO\nInformação preservada conforme o contexto fornecido.",
+        "10. SÍNTESE CIO",
+    )
+    try:
+        validate_ai_analysis_structure(empty_section_report)
+        empty_section_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        empty_section_blocked = "STRUCTURAL_EMPTY_SECTION" in str(exc)
+    assert_test(
+        empty_section_blocked,
+        "BARREIRA ESTRUTURAL BLOQUEIA SEÇÃO VAZIA",
+    )
+
+    structural_recovery_client = FakeNVIDIAClient(
+        contents=[
+            context_dump,
+            "Relatório reconstruído. A decisão final permanece humana.",
+        ]
+    )
+    structural_recovery_result = run_cio_ai(
+        fixture,
+        client=structural_recovery_client,
+    )
+    assert_test(
+        structural_recovery_result["status"] == "OK"
+        and structural_recovery_result["structural_validation"]["status"] == "PASS"
+        and structural_recovery_result["semantic_validation"]["retry_used"] is True
+        and len(structural_recovery_client.completions.calls) == 2,
+        "RECONSTRUÇÃO RECUPERA RESPOSTA ESTRUTURALMENTE INVÁLIDA",
+    )
+
+    assert_test(
+        len(REQUIRED_REPORT_SECTIONS) == 11
+        and REQUIRED_REPORT_SECTIONS[0] == "CONTEXTO GERAL"
+        and REQUIRED_REPORT_SECTIONS[-1] == "RASTREABILIDADE",
+        "CONTRATO ESTRUTURAL DEFINE EXATAMENTE 11 SEÇÕES",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 142 TESTES OK"
+        "CIO AI AGENT V1.5 — 149 TESTES OK"
     )
     print("=" * 70)
 
