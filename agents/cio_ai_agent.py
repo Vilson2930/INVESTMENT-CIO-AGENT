@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -46,7 +48,7 @@ except ImportError:
 # CONFIGURAÇÃO
 # ============================================================
 
-CIO_AI_VERSION = "1.4"
+CIO_AI_VERSION = "1.5"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -106,6 +108,10 @@ class CIOAIInputError(CIOAIError):
 
 class CIOAIResponseError(CIOAIError):
     """Erro na resposta produzida pela NVIDIA NIM."""
+
+
+class CIOAISemanticValidationError(CIOAIResponseError):
+    """Resposta da IA rejeitada pela barreira de fidelidade semântica."""
 
 
 # ============================================================
@@ -310,6 +316,11 @@ def build_ai_context(
             "restrictions_do_not_imply_operational_consequences": True,
             "descriptive_analysis_must_not_become_prescriptive": True,
             "prescriptive_language_requires_explicit_source_attribution": True,
+
+            # V1.5 — enforcement pós-Nemotron.
+            "semantic_fidelity_barrier_enabled": True,
+            "semantic_violations_must_fail_safe": True,
+            "semantic_validation_must_not_change_source_data": True,
         },
     }
 
@@ -1372,6 +1383,229 @@ def _extract_response_text(
 
 
 # ============================================================
+# BARREIRA DE FIDELIDADE SEMÂNTICA — V1.5
+# ============================================================
+
+def _normalize_semantic_text(value: Any) -> str:
+    """
+    Normaliza texto apenas para comparação semântica defensiva.
+    Não altera o relatório nem o contexto original.
+    """
+    if value is None:
+        return ""
+
+    text = str(value).lower()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(
+        char
+        for char in text
+        if not unicodedata.combining(char)
+    )
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _context_semantic_corpus(
+    context: Dict[str, Any],
+) -> str:
+    """
+    Cria um corpus somente para verificar se uma formulação operacional
+    ou prescritiva já existe explicitamente no contexto de origem.
+    """
+    return _normalize_semantic_text(
+        json.dumps(
+            context,
+            ensure_ascii=False,
+            default=str,
+        )
+    )
+
+
+def _sentence_has_explicit_distribution_evidence(
+    sentence: str,
+) -> bool:
+    """
+    Aceita quantificação distributiva somente quando a própria frase
+    apresenta evidência numérica explícita, como:
+    - percentual;
+    - razão X de Y;
+    - contagem X/Y.
+    """
+    normalized = _normalize_semantic_text(sentence)
+
+    evidence_patterns = (
+        r"\b\d+(?:[.,]\d+)?\s*%",
+        r"\b\d+\s+de\s+\d+\b",
+        r"\b\d+\s*/\s*\d+\b",
+    )
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in evidence_patterns
+    )
+
+
+def validate_ai_analysis_semantics(
+    analysis: str,
+    context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Barreira fail-safe pós-Nemotron.
+
+    Objetivo:
+    - NÃO decidir investimentos;
+    - NÃO reinterpretar os sete robôs;
+    - NÃO corrigir silenciosamente o texto da IA;
+    - somente rejeitar uma análise que ultrapasse limites semânticos
+      críticos definidos pela governança do CIO.
+
+    Em caso de violação, a resposta não é publicada como relatório válido.
+    """
+    if not isinstance(analysis, str) or not analysis.strip():
+        raise CIOAISemanticValidationError(
+            "A análise da IA está vazia ou possui formato inválido."
+        )
+
+    if not isinstance(context, dict) or not context:
+        raise CIOAISemanticValidationError(
+            "O contexto para validação semântica está vazio ou inválido."
+        )
+
+    normalized_analysis = _normalize_semantic_text(analysis)
+    context_corpus = _context_semantic_corpus(context)
+
+    violations = []
+
+    # --------------------------------------------------------
+    # A) Quantificadores/distribuições sem evidência explícita
+    # --------------------------------------------------------
+    distributive_patterns = (
+        r"\bpredominantemente\b",
+        r"\bpredominancia\b",
+        r"\ba maioria\b",
+        r"\bmaior parte\b",
+        r"\bgrande parte\b",
+        r"\bquase todos\b",
+        r"\bquase todas\b",
+        r"\bmuitos desses sinais\b",
+        r"\bmuitas dessas oportunidades\b",
+        r"\bprincipalmente\b",
+        r"\bgeralmente\b",
+        r"\bem geral\b",
+    )
+
+    sentences = re.split(
+        r"(?<=[.!?])\s+|\n+",
+        analysis,
+    )
+
+    for sentence in sentences:
+        normalized_sentence = _normalize_semantic_text(sentence)
+
+        if not normalized_sentence:
+            continue
+
+        matched_terms = [
+            pattern
+            for pattern in distributive_patterns
+            if re.search(pattern, normalized_sentence)
+        ]
+
+        if (
+            matched_terms
+            and not _sentence_has_explicit_distribution_evidence(sentence)
+        ):
+            violations.append({
+                "code": "UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER",
+                "detail": sentence.strip(),
+            })
+
+    # --------------------------------------------------------
+    # B) Consequência operacional criada pela IA
+    # --------------------------------------------------------
+    operational_patterns = (
+        r"\blimita(?:m)? (?:a )?exposicao\b",
+        r"\breduz(?:em)? (?:a )?exposicao\b",
+        r"\bimpede(?:m)? (?:qualquer )?exposicao\b",
+        r"\bimpede(?:m)? (?:a )?entrada\b",
+        r"\bexige(?:m)? (?:a )?saida\b",
+        r"\bexige(?:m)? espera\b",
+        r"\bexige(?:m)? preservacao de capital\b",
+        r"\bexige(?:m)? rebalanceamento\b",
+        r"\bobrig(?:a|am) (?:a )?reduzir\b",
+        r"\bobrig(?:a|am) (?:a )?aumentar\b",
+    )
+
+    for pattern in operational_patterns:
+        for match in re.finditer(pattern, normalized_analysis):
+            matched_text = match.group(0)
+
+            # Se a própria formulação já existe no contexto de origem,
+            # ela pode ser relatada; caso contrário, é criação da IA.
+            if matched_text not in context_corpus:
+                violations.append({
+                    "code": "UNSUPPORTED_OPERATIONAL_CONSEQUENCE",
+                    "detail": matched_text,
+                })
+
+    # --------------------------------------------------------
+    # C) Prescrição própria sem suporte explícito na fonte
+    # --------------------------------------------------------
+    prescriptive_patterns = (
+        r"\bdeve ser respeitad[oa]s?\b",
+        r"\bdevem ser respeitad[oa]s?\b",
+        r"\bdeve ser considerad[oa]s?\b",
+        r"\bdevem ser considerad[oa]s?\b",
+        r"\bexige cautela\b",
+        r"\bexigem cautela\b",
+        r"\bexige acompanhamento\b",
+        r"\bexigem acompanhamento\b",
+    )
+
+    for pattern in prescriptive_patterns:
+        for match in re.finditer(pattern, normalized_analysis):
+            matched_text = match.group(0)
+
+            if matched_text not in context_corpus:
+                violations.append({
+                    "code": "UNSUPPORTED_PRESCRIPTIVE_LANGUAGE",
+                    "detail": matched_text,
+                })
+
+    # Remove duplicidades preservando ordem.
+    unique_violations = []
+    seen = set()
+
+    for violation in violations:
+        key = (
+            violation.get("code"),
+            violation.get("detail"),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique_violations.append(violation)
+
+    if unique_violations:
+        compact = "; ".join(
+            f"{item['code']}: {item['detail']}"
+            for item in unique_violations[:8]
+        )
+
+        raise CIOAISemanticValidationError(
+            "Resposta da NVIDIA rejeitada pela barreira de fidelidade "
+            f"semântica V1.5. Violações: {compact}"
+        )
+
+    return {
+        "status": "PASS",
+        "barrier_version": CIO_AI_VERSION,
+        "violations": [],
+        "fail_safe": True,
+        "source_data_changed": False,
+    }
+
+
+# ============================================================
 # EXECUÇÃO DA INTELIGÊNCIA
 # ============================================================
 
@@ -1451,6 +1685,15 @@ def run_cio_ai(
     )
 
     # ========================================================
+    # BARREIRA DE FIDELIDADE SEMÂNTICA — V1.5
+    # ========================================================
+
+    semantic_validation = validate_ai_analysis_semantics(
+        analysis,
+        context,
+    )
+
+    # ========================================================
     # IMUTABILIDADE
     # ========================================================
 
@@ -1495,6 +1738,10 @@ def run_cio_ai(
         ),
 
         "analysis": analysis,
+
+        "semantic_validation": _clone(
+            semantic_validation
+        ),
 
         "context_summary": {
             "pipeline_status": (
@@ -1595,6 +1842,17 @@ def run_cio_ai(
 
             "prescriptive_language_requires_source_attribution": True,
 
+            # V1.5
+            "semantic_fidelity_barrier_enabled": True,
+
+            "semantic_validation_passed": (
+                semantic_validation.get("status") == "PASS"
+            ),
+
+            "semantic_violations_accepted": False,
+
+            "semantic_fail_safe_enabled": True,
+
             "broker_execution_allowed": False,
 
             "human_decision_required": True,
@@ -1636,9 +1894,11 @@ __all__ = [
     "CIOAIConfigurationError",
     "CIOAIInputError",
     "CIOAIResponseError",
+    "CIOAISemanticValidationError",
     "validate_orchestrator_context",
     "build_ai_context",
     "build_ai_prompt",
+    "validate_ai_analysis_semantics",
     "run_cio_ai",
     "analyze_cio_context",
 ]
