@@ -1616,30 +1616,77 @@ def _build_semantic_correction_prompt(
     validation_error: Exception,
 ) -> str:
     """
-    Solicita UMA reescrita da análise rejeitada.
+    Solicita UMA reescrita semanticamente dirigida da análise rejeitada.
 
     A autocorreção:
-    - não altera o contexto;
+    - preserva integralmente o contexto original;
     - não altera sinais, scores, rankings ou decisões;
     - não cria recomendação;
-    - apenas remove/reformula violações apontadas pela barreira.
+    - recebe explicitamente as violações detectadas;
+    - proíbe repetir a formulação rejeitada ou equivalentes sem suporte;
+    - permanece limitada a uma única tentativa.
     """
+    error_text = str(validation_error)
+
+    # Extrai, quando disponível, a parte estruturada produzida pela
+    # barreira: "Violações: CODE: detalhe; CODE: detalhe".
+    violations_text = error_text
+    marker = "Violações:"
+    if marker in error_text:
+        violations_text = error_text.split(marker, 1)[1].strip()
+
     return f"""
 A análise abaixo foi REJEITADA pela barreira de fidelidade semântica
 do INVESTMENT CIO AI.
 
-ERRO DA BARREIRA:
-{validation_error}
+VIOLAÇÕES DETECTADAS PELA BARREIRA:
+{violations_text}
 
 ANÁLISE REJEITADA:
 {rejected_analysis}
 
-TAREFA DE CORREÇÃO:
+TAREFA DE AUTOCORREÇÃO:
 
-Reescreva a análise completa, preservando as mesmas 11 seções exigidas
-no prompt original e utilizando exclusivamente o contexto original.
+Reescreva a análise completa, preservando exatamente as mesmas 11 seções
+exigidas no prompt original e utilizando exclusivamente o contexto original.
 
-Corrija SOMENTE as violações apontadas pela barreira.
+A correção deve eliminar TODAS as violações listadas acima.
+
+REGRA CRÍTICA:
+
+Cada formulação indicada pela barreira como não suportada deve ser removida.
+NÃO repita a expressão rejeitada e NÃO a substitua por sinônimo ou paráfrase
+que preserve a mesma consequência, obrigação, causalidade, distribuição ou
+prescrição não sustentada pelo contexto.
+
+Exemplo obrigatório de comportamento:
+
+Se a barreira rejeitar:
+"limita exposição"
+
+e essa consequência operacional não estiver explicitamente registrada no
+contexto de origem, NÃO escreva:
+- "limita exposição";
+- "restringe exposição";
+- "reduz a exposição permitida";
+- "impede ampliar exposição";
+- "condiciona a exposição";
+- nem qualquer formulação semanticamente equivalente.
+
+Nesse caso, descreva somente o fato suportado, por exemplo:
+"Há uma restrição registrada no contexto."
+ou descreva literalmente o estado, código, severidade e fonte da restrição
+que estiverem presentes no contexto, SEM inferir sua consequência operacional.
+
+Da mesma forma:
+
+- se um quantificador distributivo for rejeitado, remova a generalização e
+  descreva apenas os fatos individuais ou a existência dos fatos suportados;
+- se linguagem prescritiva for rejeitada, transforme-a em descrição neutra
+  do fato de origem, sem criar obrigação para a decisão humana;
+- se uma consequência operacional for rejeitada, descreva apenas a existência,
+  origem, estado ou severidade da restrição, salvo quando a consequência
+  estiver explicitamente registrada no contexto e atribuída à fonte.
 
 REGRAS OBRIGATÓRIAS:
 - não acrescente fatos;
@@ -1655,10 +1702,10 @@ REGRAS OBRIGATÓRIAS:
 - não transforme metodologia em timing;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
-- preserve a decisão final humana.
-
-Se uma formulação rejeitada não puder ser sustentada diretamente pelo
-contexto, substitua-a por uma formulação estritamente descritiva.
+- preserve a decisão final humana;
+- não tente contornar a barreira com sinônimos;
+- quando não houver suporte explícito, prefira formulação estritamente
+  descritiva e de menor alcance semântico.
 
 PROMPT ORIGINAL E CONTEXTO:
 {original_prompt}
