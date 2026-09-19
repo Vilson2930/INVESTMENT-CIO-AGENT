@@ -348,7 +348,7 @@ def run_tests():
 
     print("=" * 70)
     print("INVESTMENT CIO AGENT")
-    print("TESTE — CIO AI AGENT V1.1 / NVIDIA NIM")
+    print("TESTE — CIO AI AGENT V1.2 / NVIDIA NIM")
     print("=" * 70)
 
     fixture = build_orchestrator_fixture()
@@ -357,8 +357,8 @@ def run_tests():
 
     # 1
     assert_test(
-        CIO_AI_VERSION == "1.1",
-        "IDENTIFICAÇÃO V1.1",
+        CIO_AI_VERSION == "1.2",
+        "IDENTIFICAÇÃO V1.2",
     )
 
     # 2
@@ -687,7 +687,7 @@ def run_tests():
     )
 
     # ========================================================
-    # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.1
+    # GOVERNANÇA SEMÂNTICA V1.1 — PRESERVADA
     # ========================================================
 
     # 35
@@ -738,12 +738,9 @@ def run_tests():
         "AÇÃO DE ORIGEM EXIGE ATRIBUIÇÃO",
     )
 
-    # --------------------------------------------------------
-    # 41. CORRIGIDO — CASE INSENSITIVE
-    # --------------------------------------------------------
-
     system_prompt_lower = SYSTEM_PROMPT.lower()
 
+    # 41
     assert_test(
         "não crie recomendações próprias de investimento"
         in system_prompt_lower
@@ -859,10 +856,6 @@ def run_tests():
         "SÍNTESE CIO SOMENTE INTERPRETATIVA",
     )
 
-    # --------------------------------------------------------
-    # USER PROMPT NORMALIZADO
-    # --------------------------------------------------------
-
     prompt_lower = prompt.lower()
 
     # 52
@@ -922,10 +915,7 @@ def run_tests():
         "RESULTADO EXIGE EVIDÊNCIA CAUSAL",
     )
 
-    # --------------------------------------------------------
-    # 58. PROMPT REAL ENVIADO À NVIDIA
-    # --------------------------------------------------------
-
+    # 58
     sent_system_prompt = (
         call["messages"][0]["content"].lower()
     )
@@ -947,12 +937,244 @@ def run_tests():
     )
 
     # ========================================================
+    # NOVOS TESTES — GOVERNANÇA SEMÂNTICA V1.2
+    # ========================================================
+
+    # 59
+    assert_test(
+        context["mandatory_policy"]
+        ["convergence_requires_comparable_evidence"]
+        is True,
+        "CONVERGÊNCIA EXIGE EVIDÊNCIA COMPARÁVEL",
+    )
+
+    # 60
+    assert_test(
+        context["mandatory_policy"]
+        ["same_ticker_convergence_requires_same_ticker"]
+        is True,
+        "CONVERGÊNCIA POR TICKER EXIGE MESMO TICKER",
+    )
+
+    # 61
+    assert_test(
+        context["mandatory_policy"]
+        ["do_not_generalize_causes_across_assets"]
+        is True,
+        "CAUSA NÃO PASSA ENTRE ATIVOS",
+    )
+
+    # 62
+    assert_test(
+        context["mandatory_policy"]
+        ["do_not_generalize_conditions_across_signals"]
+        is True,
+        "CONDIÇÃO NÃO PASSA ENTRE SINAIS",
+    )
+
+    # 63
+    assert_test(
+        context["mandatory_policy"]
+        ["summary_must_preserve_evidence_scope"]
+        is True,
+        "SÍNTESE PRESERVA ESCOPO DA EVIDÊNCIA",
+    )
+
+    # 64
+    assert_test(
+        "convergência exige evidência comparável"
+        in system_prompt_lower
+        and
+        "simples existência de sinais positivos"
+        in system_prompt_lower,
+        "PROMPT DIFERENCIA CONVERGÊNCIA DE SINAIS POSITIVOS",
+    )
+
+    # 65
+    assert_test(
+        "coexistência de evidências positivas"
+        in system_prompt_lower
+        and
+        "não confunda coexistência com convergência"
+        in system_prompt_lower,
+        "PROMPT DIFERENCIA COEXISTÊNCIA DE CONVERGÊNCIA",
+    )
+
+    # 66
+    assert_test(
+        "não transfira causas entre ativos"
+        in system_prompt_lower
+        and
+        "não pode ser utilizado para"
+        in system_prompt_lower,
+        "PROMPT PROÍBE TRANSFERÊNCIA CAUSAL ENTRE ATIVOS",
+    )
+
+    # 67
+    assert_test(
+        "não transfira causas entre grupos de sinais"
+        in system_prompt_lower
+        and
+        "não autoriza afirmar que todos os ativos"
+        in system_prompt_lower,
+        "PROMPT PROÍBE GENERALIZAÇÃO ENTRE SINAIS",
+    )
+
+    # 68
+    assert_test(
+        "não condicione sinais já positivos sem evidência"
+        in system_prompt_lower
+        and
+        "entrada ou entrada forte"
+        in system_prompt_lower,
+        "ENTRADA POSITIVA NÃO RECEBE CONDIÇÃO INVENTADA",
+    )
+
+    # 69
+    assert_test(
+        "toda causalidade deve preservar seu escopo"
+        in system_prompt_lower
+        and
+        "exatamente àquele ativo ou sinal"
+        in system_prompt_lower,
+        "CAUSALIDADE PRESERVA ESCOPO",
+    )
+
+    # 70
+    assert_test(
+        "a síntese cio não pode ampliar o escopo da evidência"
+        in system_prompt_lower
+        and
+        "não transforme subconjuntos em totalidade"
+        in system_prompt_lower,
+        "SÍNTESE NÃO AMPLIA EVIDÊNCIA",
+    )
+
+    # 71
+    assert_test(
+        "antes de declarar convergência"
+        in system_prompt_lower
+        and
+        "se a comparação for por ticker, é o mesmo ticker?"
+        in system_prompt_lower,
+        "CHECKLIST DE CONVERGÊNCIA",
+    )
+
+    # 72
+    assert_test(
+        "antes de apresentar uma causa"
+        in system_prompt_lower
+        and
+        "não foi transportada de outro ativo?"
+        in system_prompt_lower,
+        "CHECKLIST DE CAUSALIDADE",
+    )
+
+    # 73
+    assert_test(
+        "não transforme coexistência em convergência"
+        in prompt_lower
+        and
+        "mesmo ticker deve aparecer"
+        in prompt_lower,
+        "USER PROMPT PROTEGE CONVERGÊNCIA",
+    )
+
+    # 74
+    assert_test(
+        "não transporte causas entre ativos"
+        in prompt_lower
+        and
+        "uma condição associada a um ticker não pode ser transferida"
+        in prompt_lower,
+        "USER PROMPT PROTEGE CAUSALIDADE POR ATIVO",
+    )
+
+    # 75
+    assert_test(
+        "a síntese não pode ampliar o escopo das evidências"
+        in prompt_lower
+        and
+        '"alguns ativos" e não "as oportunidades"'
+        in prompt_lower,
+        "USER PROMPT PROTEGE ESCOPO DA SÍNTESE",
+    )
+
+    # 76
+    assert_test(
+        "não diga que entrada ou entrada forte depende de confirmação"
+        in prompt_lower
+        and
+        "explicitamente informado"
+        in prompt_lower,
+        "USER PROMPT NÃO CONDICIONA ENTRADA SEM EVIDÊNCIA",
+    )
+
+    # 77
+    assert_test(
+        result["policy"]
+        ["convergence_requires_comparable_evidence"]
+        is True,
+        "RESULTADO EXIGE CONVERGÊNCIA COMPARÁVEL",
+    )
+
+    # 78
+    assert_test(
+        result["policy"]
+        ["causal_scope_must_be_preserved"]
+        is True,
+        "RESULTADO PRESERVA ESCOPO CAUSAL",
+    )
+
+    # 79
+    assert_test(
+        result["policy"]
+        ["cross_asset_causal_generalization_allowed"]
+        is False,
+        "RESULTADO PROÍBE GENERALIZAÇÃO ENTRE ATIVOS",
+    )
+
+    # 80
+    assert_test(
+        result["policy"]
+        ["summary_evidence_scope_preserved"]
+        is True,
+        "RESULTADO PRESERVA ESCOPO NA SÍNTESE",
+    )
+
+    # 81
+    assert_test(
+        "convergência exige evidência comparável"
+        in sent_system_prompt
+        and
+        "não transfira causas entre ativos"
+        in sent_system_prompt
+        and
+        "a síntese cio não pode ampliar o escopo da evidência"
+        in sent_system_prompt,
+        "NVIDIA RECEBE GOVERNANÇA SISTÊMICA V1.2",
+    )
+
+    # 82
+    assert_test(
+        "não transforme coexistência em convergência"
+        in sent_user_prompt
+        and
+        "não transporte causas entre ativos"
+        in sent_user_prompt
+        and
+        "a síntese não pode ampliar o escopo das evidências"
+        in sent_user_prompt,
+        "NVIDIA RECEBE GOVERNANÇA OPERACIONAL V1.2",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.1 — 58 TESTES OK"
+        "CIO AI AGENT V1.2 — 82 TESTES OK"
     )
     print("=" * 70)
 
