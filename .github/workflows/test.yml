@@ -79,3 +79,7 @@ jobs:
       - name: Test Executive Report Agent
         run: |
           python -m tests.test_executive_report_agent
+
+      - name: Test Orchestrator
+        run: |
+          python -m tests.test_orchestrator
