@@ -1,0 +1,407 @@
+name: Run Investment CIO AI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+
+  run-cio-ai:
+
+    runs-on: ubuntu-latest
+
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      CIO_GITHUB_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+      CIO_AI_MODEL: nvidia/nemotron-3-super-120b-a12b
+
+    steps:
+
+      # ======================================================
+      # REPOSITÓRIO CENTRAL
+      # ======================================================
+
+      - name: Checkout Investment CIO Agent
+        uses: actions/checkout@v4
+
+      # ======================================================
+      # PYTHON
+      # ======================================================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ======================================================
+      # DEPENDÊNCIAS
+      # ======================================================
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install openai
+
+      # ======================================================
+      # SEGURANÇA
+      # ======================================================
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [ -z "$NVIDIA_API_KEY" ]; then
+            echo "ERRO: NVIDIA_API_KEY não configurada."
+            exit 1
+          fi
+
+          if [ -z "$CIO_GITHUB_TOKEN" ]; then
+            echo "ERRO: CIO_GITHUB_TOKEN não configurado."
+            exit 1
+          fi
+
+          echo "Secrets obrigatórios encontrados."
+
+      # ======================================================
+      # COLETA DOS 7 SISTEMAS
+      # ======================================================
+
+      - name: Collect SP500 Cycle Atlas
+        run: |
+          python -m agents.collector sp500_cycle
+
+      - name: Collect COPIAULTIMOROB
+        run: |
+          python -m agents.collector global_portfolio
+
+      - name: Collect US Equities
+        run: |
+          python -m agents.collector us_equities
+
+      - name: Collect B3 Equities
+        run: |
+          python -m agents.collector b3_equities
+
+      - name: Collect AI Infrastructure
+        run: |
+          python -m agents.collector ai_infrastructure
+
+      - name: Collect FII Scanner
+        run: |
+          python -m agents.collector fii
+
+      - name: Collect Growth Opportunity
+        run: |
+          python -m agents.collector growth
+
+      # ======================================================
+      # EXECUÇÃO REAL
+      # ======================================================
+
+      - name: Run Investment CIO AI
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.orchestrator import orchestrate
+          from agents.cio_ai_agent import run_cio_ai
+
+
+          print("=" * 70)
+          print("INVESTMENT CIO AI")
+          print("EXECUÇÃO REAL — NVIDIA NIM")
+          print("=" * 70)
+
+
+          # ==================================================
+          # LOCALIZA OUTPUTS DOS 7 SISTEMAS
+          # ==================================================
+
+          possible_directories = [
+              Path("data/normalized"),
+              Path("data/collected"),
+              Path("data"),
+              Path("outputs"),
+              Path("artifacts"),
+          ]
+
+
+          def find_system_output(system_id):
+
+              candidates = []
+
+              for directory in possible_directories:
+
+                  if not directory.exists():
+                      continue
+
+                  patterns = [
+                      f"{system_id}.json",
+                      f"{system_id}_output.json",
+                      f"{system_id}_normalized.json",
+                      f"*{system_id}*.json",
+                  ]
+
+                  for pattern in patterns:
+                      candidates.extend(
+                          directory.glob(pattern)
+                      )
+
+              candidates = [
+                  path
+                  for path in candidates
+                  if path.is_file()
+              ]
+
+              if not candidates:
+                  raise RuntimeError(
+                      f"Output não encontrado para: {system_id}"
+                  )
+
+              # Arquivo mais recentemente modificado.
+              candidates.sort(
+                  key=lambda path: path.stat().st_mtime,
+                  reverse=True,
+              )
+
+              return candidates[0]
+
+
+          system_ids = [
+              "sp500_cycle",
+              "global_portfolio",
+              "us_equities",
+              "b3_equities",
+              "ai_infrastructure",
+              "fii",
+              "growth",
+          ]
+
+
+          outputs = []
+
+
+          for system_id in system_ids:
+
+              path = find_system_output(
+                  system_id
+              )
+
+              print(
+                  f"Output encontrado: "
+                  f"{system_id} -> {path}"
+              )
+
+              with path.open(
+                  "r",
+                  encoding="utf-8",
+              ) as file:
+
+                  data = json.load(file)
+
+              outputs.append(data)
+
+
+          if len(outputs) != 7:
+              raise RuntimeError(
+                  "A execução exige exatamente "
+                  "os sete sistemas."
+              )
+
+
+          # ==================================================
+          # ORCHESTRATOR
+          # ==================================================
+
+          print()
+          print(
+              "Executando Orchestrator..."
+          )
+
+          orchestrator_result = orchestrate(
+              outputs
+          )
+
+
+          if not isinstance(
+              orchestrator_result,
+              dict,
+          ):
+              raise RuntimeError(
+                  "Orchestrator retornou "
+                  "resultado inválido."
+              )
+
+
+          # ==================================================
+          # NVIDIA NIM / NEMOTRON
+          # ==================================================
+
+          print(
+              "Executando NVIDIA Nemotron..."
+          )
+
+          cio_result = run_cio_ai(
+              orchestrator_result
+          )
+
+
+          # ==================================================
+          # SALVAR RESULTADOS
+          # ==================================================
+
+          output_directory = Path(
+              "cio_ai_output"
+          )
+
+          output_directory.mkdir(
+              parents=True,
+              exist_ok=True,
+          )
+
+
+          orchestrator_file = (
+              output_directory
+              / "orchestrator_result.json"
+          )
+
+          cio_json_file = (
+              output_directory
+              / "investment_cio_ai_result.json"
+          )
+
+          cio_report_file = (
+              output_directory
+              / "investment_cio_ai_report.txt"
+          )
+
+
+          with orchestrator_file.open(
+              "w",
+              encoding="utf-8",
+          ) as file:
+
+              json.dump(
+                  orchestrator_result,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+                  default=str,
+              )
+
+
+          with cio_json_file.open(
+              "w",
+              encoding="utf-8",
+          ) as file:
+
+              json.dump(
+                  cio_result,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+                  default=str,
+              )
+
+
+          with cio_report_file.open(
+              "w",
+              encoding="utf-8",
+          ) as file:
+
+              file.write(
+                  cio_result["analysis"]
+              )
+
+
+          # ==================================================
+          # RESUMO SEGURO NO LOG
+          # ==================================================
+
+          print()
+          print("=" * 70)
+          print(
+              "INVESTMENT CIO AI — "
+              "EXECUÇÃO CONCLUÍDA"
+          )
+          print("=" * 70)
+
+          print(
+              "Status:",
+              cio_result.get("status"),
+          )
+
+          print(
+              "Provider:",
+              cio_result.get("provider"),
+          )
+
+          print(
+              "Modelo:",
+              cio_result.get("model"),
+          )
+
+          summary = cio_result.get(
+              "context_summary",
+              {},
+          )
+
+          print(
+              "Global Constraint:",
+              summary.get(
+                  "global_constraint_state"
+              ),
+          )
+
+          print(
+              "Hard Block:",
+              summary.get(
+                  "hard_block"
+              ),
+          )
+
+          print(
+              "Kill Switch:",
+              summary.get(
+                  "global_kill_switch"
+              ),
+          )
+
+          print(
+              "Restrições:",
+              summary.get(
+                  "restriction_count"
+              ),
+          )
+
+          print()
+          print(
+              "Relatório salvo em:",
+              cio_report_file,
+          )
+
+          print(
+              "Resultado JSON salvo em:",
+              cio_json_file,
+          )
+
+          print("=" * 70)
+
+          PY
+
+      # ======================================================
+      # ARTIFACT FINAL
+      # ======================================================
+
+      - name: Upload Investment CIO AI result
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment-cio-ai-result
+          path: cio_ai_output/
+          if-no-files-found: error
+          retention-days: 30
