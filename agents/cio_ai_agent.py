@@ -115,6 +115,10 @@ class CIOAISemanticValidationError(CIOAIResponseError):
     """Resposta da IA rejeitada pela barreira de fidelidade semântica."""
 
 
+class CIOAIStructuralValidationError(CIOAIResponseError):
+    """Resposta da IA rejeitada pela barreira estrutural do relatório CIO."""
+
+
 # ============================================================
 # AUXILIARES
 # ============================================================
@@ -1384,6 +1388,132 @@ def _extract_response_text(
 
 
 # ============================================================
+# BARREIRA ESTRUTURAL DO RELATÓRIO CIO — V1.5
+# ============================================================
+
+REQUIRED_REPORT_SECTIONS = (
+    "CONTEXTO GERAL",
+    "RELAÇÃO ENTRE OS SISTEMAS",
+    "CONVERGÊNCIAS",
+    "DIVERGÊNCIAS",
+    "RISCO X OPORTUNIDADE",
+    "MACRO X MICRO",
+    "SELEÇÃO X TIMING",
+    "RESTRIÇÕES E GOVERNANÇA",
+    "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO",
+    "SÍNTESE CIO",
+    "RASTREABILIDADE",
+)
+
+
+def _normalize_report_heading(value: Any) -> str:
+    """Normaliza títulos somente para validação estrutural."""
+    normalized = _normalize_semantic_text(value)
+    normalized = re.sub(r"^[#*\s]+", "", normalized)
+    normalized = re.sub(r"^\d+\s*[\.\)\-:]\s*", "", normalized)
+    normalized = re.sub(r"[*#:\s]+$", "", normalized)
+    return normalized.strip()
+
+
+def validate_ai_analysis_structure(
+    analysis: str,
+) -> Dict[str, Any]:
+    """
+    Barreira estrutural pós-Nemotron.
+
+    Rejeita:
+    - resposta vazia;
+    - reprodução direta de JSON/contexto em vez de relatório;
+    - relatório sem as 11 seções obrigatórias;
+    - seções fora da ordem exigida.
+
+    A exigência das 11 seções também funciona como fail-safe contra
+    respostas truncadas antes da conclusão do relatório.
+    """
+    if not isinstance(analysis, str) or not analysis.strip():
+        raise CIOAIStructuralValidationError(
+            "STRUCTURAL_EMPTY_RESPONSE: relatório CIO vazio ou inválido."
+        )
+
+    stripped = analysis.strip()
+    normalized = _normalize_semantic_text(stripped)
+
+    # A resposta final deve ser relatório textual, não dump do contexto.
+    json_like_start = bool(
+        re.match(r"^\s*(?:```(?:json)?\s*)?[\{\[]", stripped, re.IGNORECASE)
+    )
+    context_dump_markers = (
+        '"context_version"',
+        '"pipeline_status"',
+        '"official_systems"',
+        '"mandatory_policy"',
+        '"synthesis"',
+        '"executive_report"',
+    )
+    dump_marker_count = sum(
+        marker in normalized
+        for marker in context_dump_markers
+    )
+
+    if json_like_start or dump_marker_count >= 4:
+        raise CIOAIStructuralValidationError(
+            "STRUCTURAL_CONTEXT_DUMP: a resposta reproduz o contexto "
+            "estruturado em vez de produzir o relatório CIO."
+        )
+
+    # Localiza os 11 títulos como linhas independentes, tolerando
+    # numeração e Markdown, mas não simples menções no corpo do texto.
+    lines = stripped.splitlines()
+    found_positions = []
+
+    for required in REQUIRED_REPORT_SECTIONS:
+        required_normalized = _normalize_semantic_text(required)
+        position = None
+
+        for index, line in enumerate(lines):
+            if _normalize_report_heading(line) == required_normalized:
+                position = index
+                break
+
+        if position is None:
+            raise CIOAIStructuralValidationError(
+                "STRUCTURAL_MISSING_SECTION: seção obrigatória ausente: "
+                f"{required}"
+            )
+
+        found_positions.append(position)
+
+    if found_positions != sorted(found_positions):
+        raise CIOAIStructuralValidationError(
+            "STRUCTURAL_SECTION_ORDER: as 11 seções obrigatórias "
+            "não estão na ordem definida pelo Investment CIO AI."
+        )
+
+    # Cada seção deve possuir conteúdo antes do próximo título.
+    for idx, start in enumerate(found_positions):
+        end = (
+            found_positions[idx + 1]
+            if idx + 1 < len(found_positions)
+            else len(lines)
+        )
+        body = "\n".join(lines[start + 1:end]).strip()
+        if not body:
+            raise CIOAIStructuralValidationError(
+                "STRUCTURAL_EMPTY_SECTION: seção sem conteúdo: "
+                f"{REQUIRED_REPORT_SECTIONS[idx]}"
+            )
+
+    return {
+        "status": "PASS",
+        "barrier_version": CIO_AI_VERSION,
+        "required_sections": len(REQUIRED_REPORT_SECTIONS),
+        "sections_found": len(found_positions),
+        "context_dump_detected": False,
+        "fail_safe": True,
+    }
+
+
+# ============================================================
 # BARREIRA DE FIDELIDADE SEMÂNTICA — V1.5
 # ============================================================
 
@@ -1626,6 +1756,19 @@ Regras obrigatórias:
 - não transforme descrição em obrigação ou recomendação própria;
 - mantenha a decisão final humana;
 - produza somente a nova análise final;
+- produza obrigatoriamente as 11 seções, nesta ordem:
+  1. CONTEXTO GERAL
+  2. RELAÇÃO ENTRE OS SISTEMAS
+  3. CONVERGÊNCIAS
+  4. DIVERGÊNCIAS
+  5. RISCO X OPORTUNIDADE
+  6. MACRO X MICRO
+  7. SELEÇÃO X TIMING
+  8. RESTRIÇÕES E GOVERNANÇA
+  9. PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO
+  10. SÍNTESE CIO
+  11. RASTREABILIDADE
+- não reproduza o contexto JSON como resposta;
 - não comente o processo de correção, rejeição ou validação.
 """.strip()
 
@@ -1726,6 +1869,11 @@ def _extract_semantic_violation_codes(
         "UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER",
         "UNSUPPORTED_OPERATIONAL_CONSEQUENCE",
         "UNSUPPORTED_PRESCRIPTIVE_LANGUAGE",
+        "STRUCTURAL_EMPTY_RESPONSE",
+        "STRUCTURAL_CONTEXT_DUMP",
+        "STRUCTURAL_MISSING_SECTION",
+        "STRUCTURAL_SECTION_ORDER",
+        "STRUCTURAL_EMPTY_SECTION",
     )
 
     found = []
@@ -1797,7 +1945,19 @@ A resposta deve conter SOMENTE a nova análise final.
   ou recomendação própria.
 
 REGRAS GERAIS:
-- preserve exatamente as 11 seções exigidas;
+- produza exatamente as 11 seções abaixo, nesta ordem:
+  1. CONTEXTO GERAL
+  2. RELAÇÃO ENTRE OS SISTEMAS
+  3. CONVERGÊNCIAS
+  4. DIVERGÊNCIAS
+  5. RISCO X OPORTUNIDADE
+  6. MACRO X MICRO
+  7. SELEÇÃO X TIMING
+  8. RESTRIÇÕES E GOVERNANÇA
+  9. PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO
+  10. SÍNTESE CIO
+  11. RASTREABILIDADE
+- não reproduza o contexto JSON como resposta;
 - use exclusivamente o contexto estruturado original;
 - não acrescente fatos, causas, relações ou recomendações;
 - não altere sinais, scores, rankings ou decisões;
@@ -1960,12 +2120,18 @@ def run_cio_ai(
     # ========================================================
 
     try:
+        structural_validation = validate_ai_analysis_structure(
+            analysis,
+        )
         semantic_validation = validate_ai_analysis_semantics(
             analysis,
             context,
         )
 
-    except CIOAISemanticValidationError as first_error:
+    except (
+        CIOAIStructuralValidationError,
+        CIOAISemanticValidationError,
+    ) as first_error:
         semantic_retry_used = True
         first_semantic_rejection = str(first_error)
 
@@ -1983,8 +2149,12 @@ def run_cio_ai(
         )
 
         # Fail-safe final:
-        # se a segunda resposta continuar não conforme, a exceção
-        # é propagada e nenhum relatório é aceito/publicado.
+        # a segunda resposta precisa passar pelas DUAS barreiras.
+        # Persistindo falha estrutural ou semântica, a exceção é
+        # propagada e nenhum relatório é aceito/publicado.
+        structural_validation = validate_ai_analysis_structure(
+            corrected_analysis,
+        )
         semantic_validation = validate_ai_analysis_semantics(
             corrected_analysis,
             context,
@@ -2037,6 +2207,10 @@ def run_cio_ai(
         ),
 
         "analysis": analysis,
+
+        "structural_validation": _clone(
+            structural_validation
+        ),
 
         "semantic_validation": {
             **_clone(semantic_validation),
@@ -2147,6 +2321,16 @@ def run_cio_ai(
             "prescriptive_language_requires_source_attribution": True,
 
             # V1.5
+            "structural_report_barrier_enabled": True,
+
+            "structural_validation_passed": (
+                structural_validation.get("status") == "PASS"
+            ),
+
+            "required_report_sections": len(
+                REQUIRED_REPORT_SECTIONS
+            ),
+
             "semantic_fidelity_barrier_enabled": True,
 
             "semantic_validation_passed": (
@@ -2205,9 +2389,12 @@ __all__ = [
     "CIOAIInputError",
     "CIOAIResponseError",
     "CIOAISemanticValidationError",
+    "CIOAIStructuralValidationError",
+    "REQUIRED_REPORT_SECTIONS",
     "validate_orchestrator_context",
     "build_ai_context",
     "build_ai_prompt",
+    "validate_ai_analysis_structure",
     "validate_ai_analysis_semantics",
     "run_cio_ai",
     "analyze_cio_context",
