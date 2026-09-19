@@ -67,3 +67,7 @@ jobs:
       - name: Test Synthesis Agent
         run: |
           python -m tests.test_synthesis_agent
+
+      - name: Test Risk Agent
+        run: |
+          python -m tests.test_risk_agent
