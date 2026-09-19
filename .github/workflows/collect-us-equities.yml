@@ -1,16 +1,17 @@
-name: Collect B3 Equities
+name: Collect US Equities
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-
-  collect-b3:
-
+  collect-us-equities:
     runs-on: ubuntu-latest
 
     steps:
-
       # ======================================================
       # CHECKOUT — INVESTMENT CIO AGENT
       # ======================================================
@@ -37,19 +38,20 @@ jobs:
           pip install -r requirements.txt
 
       # ======================================================
-      # DIRETÓRIOS DE TRABALHO
+      # DIRETÓRIOS
       # ======================================================
 
       - name: Prepare directories
         run: |
-          mkdir -p downloaded_b3
+          mkdir -p source-us-equities
           mkdir -p outputs
 
       # ======================================================
-      # LOCALIZAR ÚLTIMO ARTIFACT DO PORTFOLIO B3
+      # LOCALIZAR ÚLTIMO ARTIFACT DAS AÇÕES AMERICANAS
       # ======================================================
 
-      - name: Find latest Portfolio B3 artifact
+      - name: Find latest US Equities artifact
+        id: us_equities
         env:
           GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
         run: |
@@ -58,16 +60,14 @@ jobs:
           import os
           import urllib.request
 
-          owner = "Vilson2930"
-          repo = "Portfolio-B3-Operational"
-          artifact_name = "portfolio-b3-agent-output"
+          repo = "Vilson2930/portifolio-a-oes-americana-teste"
+          artifact_name = "portfolio-acoes-americana-agent-output"
 
           token = os.environ["GH_TOKEN"]
 
           url = (
-              f"https://api.github.com/repos/"
-              f"{owner}/{repo}/actions/artifacts"
-              f"?per_page=100"
+              f"https://api.github.com/repos/{repo}/"
+              "actions/artifacts?per_page=100"
           )
 
           request = urllib.request.Request(
@@ -79,242 +79,138 @@ jobs:
               },
           )
 
-          with urllib.request.urlopen(
-              request
-          ) as response:
-              payload = json.load(response)
+          with urllib.request.urlopen(request) as response:
+              data = json.load(response)
 
           artifacts = [
               artifact
-              for artifact
-              in payload.get("artifacts", [])
+              for artifact in data.get("artifacts", [])
               if (
-                  artifact.get("name")
-                  == artifact_name
-                  and not artifact.get(
-                      "expired",
-                      False,
-                  )
+                  artifact.get("name") == artifact_name
+                  and not artifact.get("expired", False)
               )
           ]
 
           if not artifacts:
               raise RuntimeError(
-                  "Nenhum artifact válido "
-                  "encontrado com o nome: "
-                  + artifact_name
+                  "Nenhum artifact válido das Ações Americanas "
+                  f"encontrado com o nome '{artifact_name}'."
               )
 
           artifacts.sort(
-              key=lambda item:
-                  item.get(
-                      "created_at",
-                      "",
-                  ),
+              key=lambda item: item.get("created_at", ""),
               reverse=True,
           )
 
-          latest = artifacts[0]
+          artifact = artifacts[0]
 
-          artifact_id = latest["id"]
+          run_id = artifact["workflow_run"]["id"]
 
           print("=" * 70)
-          print(
-              "ARTIFACT PORTFOLIO B3 ENCONTRADO"
-          )
+          print("ARTIFACT US EQUITIES ENCONTRADO")
           print("=" * 70)
-
-          print(
-              "Repositório:",
-              repo,
-          )
-
-          print(
-              "Nome:",
-              latest.get("name"),
-          )
-
-          print(
-              "ID:",
-              artifact_id,
-          )
-
-          print(
-              "Criado em:",
-              latest.get("created_at"),
-          )
-
+          print("Repositório:", repo)
+          print("Nome:", artifact["name"])
+          print("ID:", artifact["id"])
+          print("Run ID:", run_id)
+          print("Criado em:", artifact.get("created_at"))
           print("=" * 70)
 
           with open(
-              os.environ["GITHUB_ENV"],
+              os.environ["GITHUB_OUTPUT"],
               "a",
               encoding="utf-8",
-          ) as env_file:
-
-              env_file.write(
-                  f"B3_ARTIFACT_ID={artifact_id}\n"
-              )
-
+          ) as output:
+              output.write(f"run_id={run_id}\n")
           PY
 
       # ======================================================
       # BAIXAR ARTIFACT
-      # MESMO MÉTODO JÁ VALIDADO EM US EQUITIES
       # ======================================================
 
-      - name: Download Portfolio B3 artifact
-        env:
-          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
-        run: |
-          echo "Baixando artifact ID: $B3_ARTIFACT_ID"
-
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/Vilson2930/Portfolio-B3-Operational/actions/artifacts/${B3_ARTIFACT_ID}/zip" \
-            > downloaded_b3/artifact.zip
-
-          test -s downloaded_b3/artifact.zip
-
-          echo "Artifact baixado com sucesso:"
-          ls -lh downloaded_b3/artifact.zip
-
-      # ======================================================
-      # EXTRAIR ARTIFACT
-      # ======================================================
-
-      - name: Extract Portfolio B3 artifact
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-
-          zip_path = Path(
-              "downloaded_b3/artifact.zip"
-          )
-
-          extract_dir = Path(
-              "downloaded_b3/extracted"
-          )
-
-          extract_dir.mkdir(
-              parents=True,
-              exist_ok=True,
-          )
-
-          with ZipFile(
-              zip_path,
-              "r",
-          ) as archive:
-
-              archive.extractall(
-                  extract_dir
-              )
-
-          print(
-              "Arquivos extraídos:"
-          )
-
-          for path in extract_dir.rglob("*"):
-
-              if path.is_file():
-
-                  print(
-                      "-",
-                      path,
-                  )
-
-          PY
+      - name: Download US Equities artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: portfolio-acoes-americana-agent-output
+          path: source-us-equities
+          repository: Vilson2930/portifolio-a-oes-americana-teste
+          run-id: ${{ steps.us_equities.outputs.run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
 
       # ======================================================
       # LOCALIZAR agent_output_raw.json
       # ======================================================
 
-      - name: Locate raw B3 agent output
+      - name: Locate US Equities raw output
+        id: raw
         run: |
           python - <<'PY'
           import os
           from pathlib import Path
 
-          base = Path(
-              "downloaded_b3/extracted"
-          )
-
-          matches = list(
-              base.rglob(
+          files = list(
+              Path("source-us-equities").rglob(
                   "agent_output_raw.json"
               )
           )
 
-          if not matches:
-
-              raise FileNotFoundError(
-                  "agent_output_raw.json "
-                  "não encontrado dentro "
-                  "do artifact do Portfolio B3."
+          if len(files) != 1:
+              raise RuntimeError(
+                  "Esperado exatamente 1 agent_output_raw.json "
+                  f"das Ações Americanas; encontrados: {len(files)}"
               )
 
-          raw_file = matches[0]
+          raw_file = files[0]
 
           print(
-              "JSON RAW B3 encontrado:",
+              "US Equities raw output encontrado:",
               raw_file,
           )
 
           with open(
-              os.environ["GITHUB_ENV"],
+              os.environ["GITHUB_OUTPUT"],
               "a",
               encoding="utf-8",
-          ) as env_file:
-
-              env_file.write(
-                  f"B3_RAW_FILE={raw_file}\n"
+          ) as output:
+              output.write(
+                  f"raw_file={raw_file.as_posix()}\n"
               )
-
           PY
 
       # ======================================================
-      # PROCESSAR PELO COLLECTOR
+      # PROCESSAR PELO CIO COLLECTOR
       # ======================================================
 
-      - name: Process real Portfolio B3 output
+      - name: Process US Equities through CIO Collector
+        env:
+          RAW_FILE: ${{ steps.raw.outputs.raw_file }}
         run: |
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          from agents.collector import (
-              collect_file,
+          from agents.collector import collect_file
+
+          raw_file = os.environ["RAW_FILE"]
+
+          result = collect_file(raw_file)
+
+          output_file = Path(
+              "outputs/us_equities_agent_output.json"
           )
 
-          raw_file = os.environ[
-              "B3_RAW_FILE"
-          ]
-
-          output = collect_file(
-              raw_file
-          )
-
-          output_path = Path(
-              "outputs/"
-              "b3_equities_agent_output.json"
-          )
-
-          output_path.parent.mkdir(
+          output_file.parent.mkdir(
               parents=True,
               exist_ok=True,
           )
 
-          with open(
-              output_path,
+          with output_file.open(
               "w",
               encoding="utf-8",
           ) as file:
-
               json.dump(
-                  output,
+                  result,
                   file,
                   ensure_ascii=False,
                   indent=2,
@@ -322,153 +218,186 @@ jobs:
               )
 
           print("=" * 70)
-          print(
-              "INVESTMENT CIO AGENT"
-          )
-          print(
-              "COLETA REAL — PORTFOLIO B3"
-          )
+          print("INVESTMENT CIO AGENT")
+          print("COLETA REAL — US EQUITIES")
           print("=" * 70)
 
           print(
+              "System ID:",
+              result.get("system_id"),
+          )
+
+          print(
               "Sistema:",
-              output.get(
-                  "system_name"
-              ),
+              result.get("system_name"),
           )
 
           print(
               "Status:",
-              output.get(
-                  "status"
-              ),
-          )
-
-          decision = output.get(
-              "decision",
-              {},
+              result.get("status"),
           )
 
           print(
-              "Sinal global:",
-              decision.get(
-                  "signal"
-              ),
-          )
-
-          metrics = output.get(
-              "metrics",
-              {},
+              "Sinal:",
+              result.get(
+                  "decision",
+                  {},
+              ).get("signal"),
           )
 
           print(
-              "Ações:",
-              metrics.get(
-                  "number_of_stocks"
+              "Posições:",
+              len(
+                  result.get(
+                      "positions",
+                      [],
+                  )
               ),
           )
 
           print(
-              "Setores:",
-              metrics.get(
-                  "number_of_sectors"
+              "Oportunidades:",
+              len(
+                  result.get(
+                      "opportunities",
+                      [],
+                  )
               ),
           )
 
           print(
-              "Sinais por ativo:",
-              metrics.get(
-                  "asset_signal_counts"
-              ),
-          )
-
-          print(
-              "Peso total:",
-              metrics.get(
-                  "portfolio_weight_sum"
-              ),
-          )
-
-          print(
-              "Output universal criado:",
-              output_path,
+              "Output universal:",
+              output_file,
           )
 
           print("=" * 70)
-
           PY
 
       # ======================================================
       # VALIDAR OUTPUT UNIVERSAL
       # ======================================================
 
-      - name: Validate universal B3 output
+      - name: Validate universal US Equities output
         run: |
           python - <<'PY'
           import json
+          from pathlib import Path
 
-          from agents.validator import (
-              validate_agent_output,
+          from agents.validator import validate_agent_output
+
+          output_file = Path(
+              "outputs/us_equities_agent_output.json"
           )
 
-          path = (
-              "outputs/"
-              "b3_equities_agent_output.json"
-          )
-
-          with open(
-              path,
+          with output_file.open(
               "r",
               encoding="utf-8",
           ) as file:
+              output = json.load(file)
 
-              output = json.load(
-                  file
-              )
-
-          validation = (
-              validate_agent_output(
-                  output
-              )
-          )
+          validation = validate_agent_output(output)
 
           if not validation["valid"]:
-
               print(
-                  "ERROS DE VALIDAÇÃO:"
+                  json.dumps(
+                      validation,
+                      ensure_ascii=False,
+                      indent=2,
+                  )
               )
 
-              for error in validation[
-                  "errors"
-              ]:
-
-                  print(
-                      error
-                  )
-
               raise RuntimeError(
-                  "Output Portfolio B3 "
-                  "não passou pelo "
-                  "schema universal."
+                  "Output universal das Ações Americanas "
+                  "não passou pelo schema."
+              )
+
+          if output.get("system_id") != "us_equities":
+              raise RuntimeError(
+                  "system_id inesperado: "
+                  f"{output.get('system_id')}"
+              )
+
+          positions = output.get(
+              "positions",
+              [],
+          )
+
+          opportunities = output.get(
+              "opportunities",
+              [],
+          )
+
+          if not positions:
+              raise RuntimeError(
+                  "US Equities não possui posições."
+              )
+
+          if len(opportunities) != len(positions):
+              raise RuntimeError(
+                  "Quantidade de oportunidades diferente "
+                  "da quantidade de posições."
+              )
+
+          audit = output.get(
+              "audit",
+              {},
+          )
+
+          if audit.get(
+              "source_signals_preserved"
+          ) is not True:
+              raise RuntimeError(
+                  "Os sinais de origem não foram "
+                  "marcados como preservados."
+              )
+
+          if audit.get(
+              "adapter_recalculated_signals"
+          ) is not False:
+              raise RuntimeError(
+                  "O adapter não pode recalcular sinais."
               )
 
           print("=" * 70)
           print(
-              "OUTPUT PORTFOLIO B3 "
-              "VALIDADO COM SUCESSO"
+              "US EQUITIES VALIDADO COM SUCESSO"
           )
           print("=" * 70)
 
+          print(
+              "System ID:",
+              output["system_id"],
+          )
+
+          print(
+              "Status:",
+              output["status"],
+          )
+
+          print(
+              "Posições:",
+              len(positions),
+          )
+
+          print(
+              "Sinais preservados: SIM"
+          )
+
+          print(
+              "Recálculo pelo CIO: NÃO"
+          )
+
+          print("=" * 70)
           PY
 
       # ======================================================
-      # UPLOAD DO OUTPUT DO INVESTMENT CIO
+      # PUBLICAR OUTPUT UNIVERSAL
       # ======================================================
 
-      - name: Upload Investment CIO B3 output
+      - name: Upload Investment CIO US Equities output
         uses: actions/upload-artifact@v4
         with:
-          name: investment-cio-b3-equities-output
-          path: outputs/b3_equities_agent_output.json
+          name: investment-cio-us-equities-output
+          path: outputs/us_equities_agent_output.json
           if-no-files-found: error
           retention-days: 30
