@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import unicodedata
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -1609,20 +1610,105 @@ def validate_ai_analysis_semantics(
 # AUTOCORREÇÃO SEMÂNTICA CONTROLADA — V1.5
 # ============================================================
 
+def _extract_forbidden_semantic_terms(
+    validation_error: Exception,
+) -> list[str]:
+    """
+    Extrai somente formulações efetivamente detectadas pela barreira.
+
+    A lista é usada exclusivamente para impedir que a autocorreção
+    repita, cite, exemplifique ou parafraseie a própria violação.
+    """
+    normalized_error = _normalize_semantic_text(validation_error)
+
+    candidates = (
+        # Quantificadores/distribuições
+        "predominantemente",
+        "predominancia",
+        "a maioria",
+        "maior parte",
+        "grande parte",
+        "quase todos",
+        "quase todas",
+        "muitos desses sinais",
+        "muitas dessas oportunidades",
+        "principalmente",
+        "geralmente",
+        "em geral",
+
+        # Consequências operacionais
+        "limita exposicao",
+        "limita a exposicao",
+        "reduz exposicao",
+        "reduz a exposicao",
+        "impede qualquer exposicao",
+        "impede exposicao",
+        "impede entrada",
+        "impede a entrada",
+        "exige saida",
+        "exige a saida",
+        "exige espera",
+        "exige preservacao de capital",
+        "exige rebalanceamento",
+        "obriga a reduzir",
+        "obriga reduzir",
+        "obriga a aumentar",
+        "obriga aumentar",
+
+        # Prescrição
+        "deve ser respeitado",
+        "deve ser respeitada",
+        "devem ser respeitados",
+        "devem ser respeitadas",
+        "deve ser considerado",
+        "deve ser considerada",
+        "devem ser considerados",
+        "devem ser consideradas",
+        "exige cautela",
+        "exigem cautela",
+        "exige acompanhamento",
+        "exigem acompanhamento",
+    )
+
+    found = []
+    seen = set()
+
+    for candidate in candidates:
+        normalized_candidate = _normalize_semantic_text(candidate)
+        if normalized_candidate in normalized_error and normalized_candidate not in seen:
+            seen.add(normalized_candidate)
+            found.append(candidate)
+
+    return found
+
+
 def _build_semantic_correction_prompt(
     original_prompt: str,
     rejected_analysis: str,
     validation_error: Exception,
 ) -> str:
     """
-    Solicita UMA reescrita da análise rejeitada.
+    Solicita UMA reescrita integral da análise rejeitada.
 
     A autocorreção:
     - não altera o contexto;
     - não altera sinais, scores, rankings ou decisões;
     - não cria recomendação;
-    - apenas remove/reformula violações apontadas pela barreira.
+    - recebe uma lista dinâmica das formulações realmente rejeitadas;
+    - proíbe repetir essas formulações inclusive em metacomentários.
     """
+    forbidden_terms = _extract_forbidden_semantic_terms(validation_error)
+
+    if forbidden_terms:
+        forbidden_block = "\n".join(
+            f"- {term}"
+            for term in forbidden_terms
+        )
+    else:
+        forbidden_block = (
+            "- Todas as formulações identificadas no ERRO DA BARREIRA."
+        )
+
     return f"""
 A análise abaixo foi REJEITADA pela barreira de fidelidade semântica
 do INVESTMENT CIO AI.
@@ -1630,38 +1716,124 @@ do INVESTMENT CIO AI.
 ERRO DA BARREIRA:
 {validation_error}
 
+TERMOS/FORMULAÇÕES PROIBIDOS NA RESPOSTA CORRIGIDA:
+{forbidden_block}
+
+REGRA ABSOLUTA SOBRE AS FORMULAÇÕES PROIBIDAS:
+
+Nenhuma formulação listada acima pode aparecer em qualquer parte da
+resposta corrigida.
+
+Isso inclui:
+- texto normal;
+- títulos;
+- citações;
+- exemplos;
+- listas;
+- observações;
+- explicações;
+- metacomentários;
+- comentários sobre a própria correção;
+- declaração final de conformidade.
+
+NÃO mencione uma formulação proibida nem mesmo para dizer que ela:
+- foi removida;
+- é inadequada;
+- não possui suporte;
+- não foi utilizada;
+- seria proibida;
+- não deve ser usada.
+
+NÃO tente contornar a barreira com sinônimos, paráfrases ou construções
+que preservem a mesma consequência operacional, distribuição,
+prescrição, causalidade ou obrigação não sustentada pelo contexto.
+
 ANÁLISE REJEITADA:
 {rejected_analysis}
 
 TAREFA DE CORREÇÃO:
 
-Reescreva a análise completa, preservando as mesmas 11 seções exigidas
-no prompt original e utilizando exclusivamente o contexto original.
+Reescreva a análise completa preservando exatamente as 11 seções
+exigidas pelo prompt original e utilizando exclusivamente o contexto
+original.
 
-Corrija SOMENTE as violações apontadas pela barreira.
+A resposta deve conter SOMENTE a análise corrigida.
+
+NÃO explique:
+- que houve correção;
+- que houve rejeição;
+- quais violações existiam;
+- quais termos foram removidos;
+- como a barreira funciona.
 
 REGRAS OBRIGATÓRIAS:
 - não acrescente fatos;
 - não acrescente causas;
-- não acrescente relações;
+- não acrescente relações não sustentadas;
 - não acrescente recomendações;
 - não altere sinais;
 - não altere scores;
 - não altere rankings;
+- não altere decisões dos sistemas;
 - não transforme restrição em consequência operacional;
 - não use linguagem prescritiva própria;
 - não use quantificadores distributivos sem evidência explícita;
 - não transforme metodologia em timing;
+- não transforme metodologia em causa;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
+- não transforme coexistência em convergência;
 - preserve a decisão final humana.
 
-Se uma formulação rejeitada não puder ser sustentada diretamente pelo
-contexto, substitua-a por uma formulação estritamente descritiva.
+REGRAS ESPECÍFICAS DE REFORMULAÇÃO:
+
+1. Se um quantificador distributivo foi rejeitado:
+   descreva fatos individualmente ou apenas a existência dos fatos
+   explicitamente presentes. Não crie distribuição implícita.
+
+2. Se uma consequência operacional foi rejeitada:
+   descreva somente o fato suportado pelo contexto, como existência,
+   origem, estado, código ou severidade da restrição. Não derive uma
+   consequência operacional adicional.
+
+3. Se linguagem prescritiva foi rejeitada:
+   converta a frase em descrição neutra do fato de origem. Não crie
+   obrigação, orientação ou recomendação para a decisão humana.
+
+4. Se não houver suporte explícito para uma interpretação:
+   prefira formulação estritamente descritiva e de menor alcance
+   semântico.
+
+5. Preserve exatamente o escopo da evidência:
+   não transforme um ativo em grupo, um subconjunto em totalidade,
+   metodologia em causa, status em explicação ou restrição em ação.
+
+Antes de devolver a resposta, faça uma verificação silenciosa:
+- nenhuma formulação proibida aparece em lugar algum;
+- nenhum sinônimo reproduz a mesma violação;
+- as 11 seções foram preservadas;
+- sinais, scores, rankings e decisões permanecem intactos;
+- a resposta contém apenas a análise final corrigida.
 
 PROMPT ORIGINAL E CONTEXTO:
 {original_prompt}
 """.strip()
+
+
+def _is_transient_nvidia_503(exc: Exception) -> bool:
+    """Identifica indisponibilidade temporária HTTP 503 da NVIDIA."""
+    status_code = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    message = str(exc).lower()
+
+    return (
+        status_code == 503
+        or response_status == 503
+        or "error code: 503" in message
+        or "service temporarily overloaded" in message
+        or "service unavailable" in message
+    )
 
 
 def _request_nvidia_analysis(
@@ -1670,39 +1842,62 @@ def _request_nvidia_analysis(
     user_prompt: str,
 ) -> str:
     """
-    Executa uma chamada NVIDIA NIM e devolve somente o texto validável.
-    """
-    try:
-        completion = client.chat.completions.create(
-            model=selected_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ],
-            temperature=1.0,
-            top_p=0.95,
-            max_tokens=8192,
-            stream=False,
-            extra_body={
-                "chat_template_kwargs": {
-                    "enable_thinking": True,
-                    "low_effort": True,
-                }
-            },
-        )
-    except Exception as exc:
-        raise CIOAIResponseError(
-            "Falha na execução da NVIDIA NIM: "
-            f"{exc}"
-        ) from exc
+    Executa NVIDIA NIM com resiliência somente para HTTP 503.
 
-    return _extract_response_text(completion)
+    - 3 tentativas totais;
+    - espera progressiva de 10s e 30s;
+    - outros erros não são repetidos;
+    - persistindo 503, mantém fail-safe.
+    """
+    max_attempts = 3
+    retry_delays = (10, 30)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=selected_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT,
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    },
+                ],
+                temperature=1.0,
+                top_p=0.95,
+                max_tokens=8192,
+                stream=False,
+                extra_body={
+                    "chat_template_kwargs": {
+                        "enable_thinking": True,
+                        "low_effort": True,
+                    }
+                },
+            )
+
+            return _extract_response_text(completion)
+
+        except Exception as exc:
+            transient_503 = _is_transient_nvidia_503(exc)
+
+            if transient_503 and attempt < max_attempts:
+                time.sleep(retry_delays[attempt - 1])
+                continue
+
+            if transient_503:
+                raise CIOAIResponseError(
+                    "Falha na execução da NVIDIA NIM após "
+                    f"{max_attempts} tentativas por indisponibilidade "
+                    f"temporária HTTP 503: {exc}"
+                ) from exc
+
+            raise CIOAIResponseError(
+                "Falha na execução da NVIDIA NIM: "
+                f"{exc}"
+            ) from exc
 
 
 # ============================================================
