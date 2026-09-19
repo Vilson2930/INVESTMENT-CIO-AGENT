@@ -1580,8 +1580,8 @@ def run_tests():
     )
 
     assert_test(
-        "análise abaixo foi rejeitada" in correction_user_prompt
-        and "termos/formulações proibidos na resposta corrigida"
+        "classes de violação detectadas:" in correction_user_prompt
+        and "unsupported_operational_consequence"
         in correction_user_prompt
         and "não altere sinais" in correction_user_prompt
         and "não altere scores" in correction_user_prompt
@@ -1630,36 +1630,39 @@ def run_tests():
 
     # 124
     assert_test(
-        "impede qualquer exposição" in correction_user_prompt
-        and "não tente contornar a barreira com sinônimos"
+        "você não receberá a redação rejeitada"
         in correction_user_prompt
-        and "nenhuma formulação listada acima pode aparecer"
+        and "não tente reconstruir, citar, explicar ou comentar"
+        in correction_user_prompt
+        and "faça uma nova análise integral exclusivamente"
         in correction_user_prompt,
-        "AUTOCORREÇÃO PROÍBE REPETIÇÃO E PARÁFRASE DA VIOLAÇÃO",
+        "AUTOCORREÇÃO RECONSTRÓI SEM REENVIAR RESPOSTA REJEITADA",
     )
 
     # 125
     assert_test(
         "unsupported_operational_consequence"
         in correction_user_prompt
-        and "impede qualquer exposição"
-        in correction_user_prompt,
-        "AUTOCORREÇÃO RECEBE VIOLAÇÃO ESPECÍFICA DA BARREIRA",
+        and "unsupported_prescriptive_language"
+        not in correction_user_prompt
+        and "unsupported_distributive_quantifier"
+        not in correction_user_prompt,
+        "AUTOCORREÇÃO RECEBE SOMENTE CLASSE REAL DA VIOLAÇÃO",
     )
 
     # 126
     assert_test(
-        "descreva somente o fato suportado"
-        in correction_user_prompt
-        and "prefira formulação estritamente descritiva"
+        "formulação estritamente descritiva"
         in correction_user_prompt
         and "menor alcance"
+        in correction_user_prompt
+        and "use exclusivamente o contexto original"
         in correction_user_prompt,
         "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
     )
 
     # ========================================================
-    # TESTES DE PRODUÇÃO — LISTA DINÂMICA / METACOMENTÁRIO
+    # TESTES DE PRODUÇÃO — RECONSTRUÇÃO SEM CONTAMINAÇÃO
     # ========================================================
 
     # 127
@@ -1689,23 +1692,58 @@ def run_tests():
     )
 
     assert_test(
-        "a maioria" in production_prompt
-        and "limita exposicao" in production_prompt
-        and "impede entrada" in production_prompt
-        and "deve ser considerado" in production_prompt,
-        "LISTA DINÂMICA RECEBE VIOLAÇÕES REAIS DE PRODUÇÃO",
+        "unsupported_distributive_quantifier"
+        in production_prompt
+        and "unsupported_operational_consequence"
+        in production_prompt
+        and "unsupported_prescriptive_language"
+        in production_prompt,
+        "AUTOCORREÇÃO RECEBE AS CLASSES DAS VIOLAÇÕES REAIS",
     )
 
     # 128
+    rejected_production_text = (
+        "a maioria dos sinais exige cautela. "
+        "a restrição limita exposição e impede entrada. "
+        "o cenário deve ser considerado."
+    )
+
     assert_test(
-        "citações" in production_prompt
-        and "exemplos" in production_prompt
-        and "metacomentários" in production_prompt
-        and "declaração final de conformidade" in production_prompt,
-        "TERMOS PROIBIDOS NÃO PODEM APARECER EM METACOMENTÁRIO",
+        rejected_production_text not in production_prompt
+        and "a maioria dos sinais exige cautela"
+        not in production_prompt
+        and "o cenário deve ser considerado"
+        not in production_prompt,
+        "RESPOSTA REJEITADA NÃO É REINJETADA NO PROMPT",
     )
 
     # 129
+    assert_test(
+        "limita exposição" not in production_prompt
+        and "impede entrada" not in production_prompt,
+        "DETALHES LITERAIS DA VIOLAÇÃO NÃO SÃO REINJETADOS",
+    )
+
+    # 130
+    assert_test(
+        "não receberá a redação rejeitada"
+        in production_prompt
+        and "não receberá" in production_prompt
+        and "trechos textuais" in production_prompt
+        and "nova análise integral" in production_prompt,
+        "PROMPT EXPLICITA RECONSTRUÇÃO SEM TEXTO REJEITADO",
+    )
+
+    # 131
+    assert_test(
+        production_result["status"] == "OK"
+        and production_result["semantic_validation"]["status"] == "PASS"
+        and production_result["semantic_validation"]["retry_used"] is True
+        and len(production_client.completions.calls) == 2,
+        "RECONSTRUÇÃO SEM CONTAMINAÇÃO RECUPERA CASO DE PRODUÇÃO",
+    )
+
+    # 132
     try:
         validate_ai_analysis_semantics(
             (
@@ -1722,29 +1760,10 @@ def run_tests():
 
     assert_test(
         True,
-        "BARREIRA BLOQUEIA QUANTIFICADOR MESMO EM METACOMENTÁRIO",
+        "BARREIRA CONTINUA BLOQUEANDO METACOMENTÁRIO INVÁLIDO",
     )
 
-    # 130
-    assert_test(
-        production_result["status"] == "OK"
-        and production_result["semantic_validation"]["status"] == "PASS"
-        and production_result["semantic_validation"]["retry_used"] is True
-        and len(production_client.completions.calls) == 2,
-        "AUTOCORREÇÃO DINÂMICA RECUPERA CASO REAL DE PRODUÇÃO",
-    )
-
-    # 131
-    assert_test(
-        "a resposta deve conter somente a análise corrigida"
-        in production_prompt
-        and "não explique:" in production_prompt
-        and "que houve correção" in production_prompt
-        and "quais termos foram removidos" in production_prompt,
-        "AUTOCORREÇÃO PROÍBE EXPLICAÇÃO DA PRÓPRIA CORREÇÃO",
-    )
-
-    # 132
+    # 133
     prescriptive_client = FakeNVIDIAClient(
         contents=[
             "O cenário deve ser considerado.",
@@ -1766,9 +1785,73 @@ def run_tests():
     )
 
     assert_test(
-        "deve ser considerado" in prescriptive_prompt
+        "unsupported_prescriptive_language"
+        in prescriptive_prompt
+        and "o cenário deve ser considerado"
+        not in prescriptive_prompt
         and prescriptive_result["semantic_validation"]["status"] == "PASS",
-        "AUTOCORREÇÃO TRATA PRESCRIÇÃO REAL DEVE SER CONSIDERADO",
+        "PRESCRIÇÃO É CORRIGIDA SEM REINJETAR FRASE REJEITADA",
+    )
+
+    # 134
+    assert_test(
+        "a resposta deve conter somente a nova análise final"
+        in production_prompt
+        and "não inclua:" in production_prompt
+        and "explicação sobre a correção" in production_prompt
+        and "comentário sobre a rejeição anterior" in production_prompt,
+        "AUTOCORREÇÃO PROÍBE METACOMENTÁRIO SOBRE REPARO",
+    )
+
+    # 135
+    assert_test(
+        "prompt original e contexto:" in production_prompt
+        and "contexto original" in production_prompt
+        and '"sp500_cycle"' in production_prompt
+        and '"global_portfolio"' in production_prompt,
+        "AUTOCORREÇÃO REUTILIZA CONTEXTO ORIGINAL DOS SISTEMAS",
+    )
+
+    # 136
+    contamination_client = FakeNVIDIAClient(
+        contents=[
+            (
+                "A maioria dos sinais limita exposição e impede entrada. "
+                "O cenário deve ser considerado."
+            ),
+            (
+                "Os sistemas registram sinais distintos. "
+                "Há restrições registradas no contexto. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    contamination_result = run_cio_ai(
+        fixture,
+        client=contamination_client,
+    )
+
+    contamination_prompt = (
+        contamination_client.completions.calls[1]
+        ["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        contamination_result["semantic_validation"]["status"] == "PASS"
+        and "a maioria dos sinais limita exposição e impede entrada"
+        not in contamination_prompt
+        and "o cenário deve ser considerado"
+        not in contamination_prompt,
+        "CASO COMBINADO É RECONSTRUÍDO SEM CONTAMINAÇÃO TEXTUAL",
+    )
+
+    # 137
+    assert_test(
+        len(contamination_client.completions.calls) == 2
+        and contamination_result["semantic_validation"]["retry_used"] is True
+        and contamination_result["policy"]["semantic_auto_correction_used"] is True,
+        "RECONSTRUÇÃO MANTÉM EXATAMENTE UMA AUTOCORREÇÃO SEMÂNTICA",
     )
 
     # ========================================================
@@ -1785,7 +1868,7 @@ def run_tests():
     cio_ai_module.time.sleep = lambda seconds: sleep_calls.append(seconds)
 
     try:
-        # 133 — um 503 e depois sucesso
+        # 138 — um 503 e depois sucesso
         retry_once_client = FakeNVIDIAClient(
             contents=[
                 Fake503Error("Service temporarily overloaded"),
@@ -1808,7 +1891,7 @@ def run_tests():
             "NVIDIA 503 RECUPERA NA SEGUNDA TENTATIVA",
         )
 
-        # 134 — dois 503 e depois sucesso
+        # 139 — dois 503 e depois sucesso
         sleep_calls.clear()
         retry_twice_client = FakeNVIDIAClient(
             contents=[
@@ -1833,7 +1916,7 @@ def run_tests():
             "NVIDIA 503 RECUPERA NA TERCEIRA TENTATIVA",
         )
 
-        # 135 — três 503: fail-safe
+        # 140 — três 503: fail-safe
         sleep_calls.clear()
         retry_fail_client = FakeNVIDIAClient(
             contents=[
@@ -1860,7 +1943,7 @@ def run_tests():
             "NVIDIA 503 PERSISTENTE FALHA APÓS TRÊS TENTATIVAS",
         )
 
-        # 136 — erro não 503: não repetir
+        # 141 — erro não 503: não repetir
         sleep_calls.clear()
         non_503_client = FakeNVIDIAClient(
             contents=[
@@ -1885,7 +1968,7 @@ def run_tests():
             "ERRO NVIDIA NÃO 503 NÃO É REPETIDO",
         )
 
-        # 137 — 503 durante a única autocorreção semântica
+        # 142 — 503 durante a única autocorreção semântica
         sleep_calls.clear()
         semantic_503_client = FakeNVIDIAClient(
             contents=[
@@ -1920,7 +2003,7 @@ def run_tests():
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 137 TESTES OK"
+        "CIO AI AGENT V1.5 — 142 TESTES OK"
     )
     print("=" * 70)
 
