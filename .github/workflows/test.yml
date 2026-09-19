@@ -75,3 +75,7 @@ jobs:
       - name: Test Decision Agent
         run: |
           python -m tests.test_decision_agent
+
+      - name: Test Executive Report Agent
+        run: |
+          python -m tests.test_executive_report_agent
