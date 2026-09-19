@@ -1647,7 +1647,9 @@ def run_tests():
     assert_test(
         "descreva somente o fato suportado"
         in correction_user_prompt
-        and "formulação estritamente descritiva"
+        and "prefira formulação estritamente"
+        in correction_user_prompt
+        and "descritiva e de menor alcance semântico"
         in correction_user_prompt,
         "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
     )
