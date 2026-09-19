@@ -29,23 +29,40 @@ from agents.cio_ai_agent import (
 
 class FakeCompletions:
 
-    def __init__(self, content=None, raise_error=False):
+    def __init__(
+        self,
+        content=None,
+        raise_error=False,
+        contents=None,
+    ):
         self.content = content
         self.raise_error = raise_error
+        self.contents = list(contents) if contents is not None else None
         self.last_call = None
+        self.calls = []
 
     def create(self, **kwargs):
 
         self.last_call = deepcopy(kwargs)
+        self.calls.append(deepcopy(kwargs))
 
         if self.raise_error:
             raise RuntimeError("NVIDIA indisponível")
+
+        if self.contents is not None:
+            if not self.contents:
+                raise RuntimeError(
+                    "Sem resposta simulada NVIDIA disponível."
+                )
+            response_content = self.contents.pop(0)
+        else:
+            response_content = self.content
 
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
                     message=SimpleNamespace(
-                        content=self.content
+                        content=response_content
                     )
                 )
             ]
@@ -64,10 +81,12 @@ class FakeNVIDIAClient:
         self,
         content="ANÁLISE CIO SIMULADA",
         raise_error=False,
+        contents=None,
     ):
         self.completions = FakeCompletions(
             content=content,
             raise_error=raise_error,
+            contents=contents,
         )
 
         self.chat = FakeChat(
@@ -1488,7 +1507,10 @@ def run_tests():
 
     # 116
     blocked_client = FakeNVIDIAClient(
-        content="O Kill Switch impede qualquer exposição adicional."
+        contents=[
+            "O Kill Switch impede qualquer exposição adicional.",
+            "O Kill Switch impede qualquer exposição adicional.",
+        ]
     )
 
     try:
@@ -1497,14 +1519,15 @@ def run_tests():
             client=blocked_client,
         )
         raise AssertionError(
-            "run_cio_ai deveria rejeitar resposta semanticamente inválida."
+            "run_cio_ai deveria rejeitar a segunda resposta "
+            "semanticamente inválida."
         )
     except CIOAISemanticValidationError:
         pass
 
     assert_test(
-        True,
-        "RUN CIO AI APLICA FAIL-SAFE PÓS-NEMOTRON",
+        len(blocked_client.completions.calls) == 2,
+        "RUN CIO AI APLICA FAIL-SAFE APÓS UMA AUTOCORREÇÃO",
     )
 
     # 117
@@ -1514,12 +1537,101 @@ def run_tests():
     )
 
     # ========================================================
+    # NOVOS TESTES — AUTOCORREÇÃO SEMÂNTICA CONTROLADA V1.5
+    # ========================================================
+
+    # 118
+    correction_client = FakeNVIDIAClient(
+        contents=[
+            "O Kill Switch impede qualquer exposição adicional.",
+            (
+                "Há uma restrição global de risco registrada no contexto. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    corrected_result = run_cio_ai(
+        fixture,
+        client=correction_client,
+    )
+
+    assert_test(
+        corrected_result["status"] == "OK"
+        and corrected_result["semantic_validation"]["status"] == "PASS"
+        and corrected_result["semantic_validation"]["retry_used"] is True
+        and corrected_result["policy"]["semantic_auto_correction_used"] is True,
+        "AUTOCORREÇÃO SEMÂNTICA RECUPERA RESPOSTA INVÁLIDA",
+    )
+
+    # 119
+    assert_test(
+        len(correction_client.completions.calls) == 2,
+        "AUTOCORREÇÃO USA EXATAMENTE UMA SEGUNDA CHAMADA",
+    )
+
+    # 120
+    correction_call = correction_client.completions.calls[1]
+    correction_user_prompt = (
+        correction_call["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        "análise abaixo foi rejeitada" in correction_user_prompt
+        and "erro da barreira" in correction_user_prompt
+        and "corrija somente as violações apontadas" in correction_user_prompt
+        and "não altere sinais" in correction_user_prompt
+        and "não altere scores" in correction_user_prompt
+        and "não altere rankings" in correction_user_prompt,
+        "PROMPT DE AUTOCORREÇÃO PRESERVA DADOS E SINAIS",
+    )
+
+    # 121
+    assert_test(
+        corrected_result["analysis"]
+        == (
+            "Há uma restrição global de risco registrada no contexto. "
+            "A decisão final permanece humana."
+        ),
+        "RESULTADO PUBLICA SOMENTE ANÁLISE CORRIGIDA E VALIDADA",
+    )
+
+    # 122
+    no_retry_client = FakeNVIDIAClient(
+        content=(
+            "Os sistemas apresentam sinais distintos. "
+            "A decisão final permanece humana."
+        )
+    )
+
+    no_retry_result = run_cio_ai(
+        fixture,
+        client=no_retry_client,
+    )
+
+    assert_test(
+        len(no_retry_client.completions.calls) == 1
+        and no_retry_result["semantic_validation"]["retry_used"] is False
+        and no_retry_result["policy"]["semantic_auto_correction_used"] is False,
+        "RESPOSTA CONFORME NÃO ACIONA AUTOCORREÇÃO",
+    )
+
+    # 123
+    assert_test(
+        corrected_result["semantic_validation"]["max_semantic_retries"] == 1
+        and corrected_result["semantic_validation"]["first_rejection_recorded"] is True
+        and corrected_result["policy"]["semantic_auto_correction_enabled"] is True
+        and corrected_result["policy"]["semantic_auto_correction_max_retries"] == 1,
+        "AUTOCORREÇÃO LIMITADA A UMA TENTATIVA",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 117 TESTES OK"
+        "CIO AI AGENT V1.5 — 123 TESTES OK"
     )
     print("=" * 70)
 
