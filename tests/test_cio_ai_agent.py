@@ -1095,7 +1095,7 @@ def run_tests():
         "a síntese não pode ampliar o escopo das evidências"
         in prompt_lower
         and
-        '"alguns ativos" e não "as oportunidades"'
+        "não use a causa de um subconjunto para explicar todo o conjunto"
         in prompt_lower,
         "USER PROMPT PROTEGE ESCOPO DA SÍNTESE",
     )
