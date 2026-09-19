@@ -1092,13 +1092,10 @@ def run_tests():
 
     # 75
     assert_test(
-        "síntese" in prompt_lower
+        "10. síntese cio" in prompt_lower
         and
-        "não pode ampliar" in prompt_lower
-        and
-        "subconjunto" in prompt_lower
-        and
-        "todo o conjunto" in prompt_lower,
+        '"summary_must_preserve_evidence_scope": true'
+        in prompt_lower,
         "USER PROMPT PROTEGE ESCOPO DA SÍNTESE",
     )
 
