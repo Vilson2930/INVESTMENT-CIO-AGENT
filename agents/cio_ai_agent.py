@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import unicodedata
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -1664,45 +1665,77 @@ PROMPT ORIGINAL E CONTEXTO:
 """.strip()
 
 
+def _is_transient_nvidia_503(exc: Exception) -> bool:
+    """Identifica indisponibilidade temporária HTTP 503 da NVIDIA."""
+    status_code = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    message = str(exc).lower()
+
+    return (
+        status_code == 503
+        or response_status == 503
+        or "error code: 503" in message
+        or "service temporarily overloaded" in message
+        or "service unavailable" in message
+    )
+
+
 def _request_nvidia_analysis(
     client: Any,
     selected_model: str,
     user_prompt: str,
 ) -> str:
     """
-    Executa uma chamada NVIDIA NIM e devolve somente o texto validável.
-    """
-    try:
-        completion = client.chat.completions.create(
-            model=selected_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ],
-            temperature=1.0,
-            top_p=0.95,
-            max_tokens=8192,
-            stream=False,
-            extra_body={
-                "chat_template_kwargs": {
-                    "enable_thinking": True,
-                    "low_effort": True,
-                }
-            },
-        )
-    except Exception as exc:
-        raise CIOAIResponseError(
-            "Falha na execução da NVIDIA NIM: "
-            f"{exc}"
-        ) from exc
+    Executa NVIDIA NIM com resiliência somente para HTTP 503.
 
-    return _extract_response_text(completion)
+    - 3 tentativas totais;
+    - espera progressiva de 10s e 30s;
+    - outros erros não são repetidos;
+    - persistindo 503, mantém fail-safe.
+    """
+    max_attempts = 3
+    retry_delays = (10, 30)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            completion = client.chat.completions.create(
+                model=selected_model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=1.0,
+                top_p=0.95,
+                max_tokens=8192,
+                stream=False,
+                extra_body={
+                    "chat_template_kwargs": {
+                        "enable_thinking": True,
+                        "low_effort": True,
+                    }
+                },
+            )
+            return _extract_response_text(completion)
+
+        except Exception as exc:
+            transient_503 = _is_transient_nvidia_503(exc)
+
+            if transient_503 and attempt < max_attempts:
+                time.sleep(retry_delays[attempt - 1])
+                continue
+
+            if transient_503:
+                raise CIOAIResponseError(
+                    "Falha na execução da NVIDIA NIM após "
+                    f"{max_attempts} tentativas por indisponibilidade "
+                    f"temporária HTTP 503: {exc}"
+                ) from exc
+
+            raise CIOAIResponseError(
+                "Falha na execução da NVIDIA NIM: "
+                f"{exc}"
+            ) from exc
 
 
 # ============================================================
