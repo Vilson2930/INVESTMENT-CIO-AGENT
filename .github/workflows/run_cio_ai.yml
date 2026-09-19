@@ -8,9 +8,7 @@ permissions:
   actions: read
 
 jobs:
-
   run-cio-ai:
-
     runs-on: ubuntu-latest
 
     env:
@@ -19,16 +17,15 @@ jobs:
       CIO_AI_MODEL: nvidia/nemotron-3-super-120b-a12b
 
     steps:
-
       # ======================================================
-      # REPOSITÓRIO CENTRAL
+      # 1. REPOSITÓRIO CENTRAL
       # ======================================================
 
       - name: Checkout Investment CIO Agent
         uses: actions/checkout@v4
 
       # ======================================================
-      # PYTHON
+      # 2. PYTHON
       # ======================================================
 
       - name: Setup Python
@@ -37,7 +34,7 @@ jobs:
           python-version: "3.12"
 
       # ======================================================
-      # DEPENDÊNCIAS
+      # 3. DEPENDÊNCIAS
       # ======================================================
 
       - name: Install dependencies
@@ -47,7 +44,7 @@ jobs:
           pip install openai
 
       # ======================================================
-      # SEGURANÇA
+      # 4. SEGURANÇA
       # ======================================================
 
       - name: Validate required secrets
@@ -66,43 +63,305 @@ jobs:
           echo "Secrets obrigatórios encontrados."
 
       # ======================================================
-      # COLETA DOS 7 SISTEMAS
+      # 5. PREPARAR DIRETÓRIOS
       # ======================================================
 
-      - name: Collect SP500 Cycle Atlas
+      - name: Prepare directories
         run: |
-          python -m agents.collector sp500_cycle
-
-      - name: Collect COPIAULTIMOROB
-        run: |
-          python -m agents.collector global_portfolio
-
-      - name: Collect US Equities
-        run: |
-          python -m agents.collector us_equities
-
-      - name: Collect B3 Equities
-        run: |
-          python -m agents.collector b3_equities
-
-      - name: Collect AI Infrastructure
-        run: |
-          python -m agents.collector ai_infrastructure
-
-      - name: Collect FII Scanner
-        run: |
-          python -m agents.collector fii
-
-      - name: Collect Growth Opportunity
-        run: |
-          python -m agents.collector growth
+          mkdir -p cio_inputs
+          mkdir -p cio_ai_output
 
       # ======================================================
-      # EXECUÇÃO REAL
+      # 6. LOCALIZAR OS 7 ARTIFACTS MAIS RECENTES
+      # ======================================================
+
+      - name: Find latest validated CIO artifacts
+        id: artifacts
+        env:
+          GH_TOKEN: ${{ secrets.CIO_GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repo = "Vilson2930/INVESTMENT-CIO-AGENT"
+          token = os.environ["GH_TOKEN"]
+
+          required_artifacts = {
+              "sp500": "investment-cio-sp500-output",
+              "copia": "investment-cio-copiaultimorob-output",
+              "us_equities": "investment-cio-us-equities-output",
+              "b3_equities": "investment-cio-b3-equities-output",
+              "ai_infrastructure": "investment-cio-ai-infrastructure-output",
+              "fii": "investment-cio-fii-output",
+              "growth": "investment-cio-growth-output",
+          }
+
+          url = (
+              f"https://api.github.com/repos/{repo}/"
+              "actions/artifacts?per_page=100"
+          )
+
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+
+          with urllib.request.urlopen(request) as response:
+              data = json.load(response)
+
+          all_artifacts = data.get("artifacts", [])
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+
+          print("=" * 70)
+          print("INVESTMENT CIO AGENT")
+          print("LOCALIZAÇÃO DOS 7 ARTIFACTS")
+          print("=" * 70)
+
+          with open(
+              github_output,
+              "a",
+              encoding="utf-8",
+          ) as output:
+
+              for key, artifact_name in required_artifacts.items():
+
+                  matches = [
+                      artifact
+                      for artifact in all_artifacts
+                      if (
+                          artifact.get("name") == artifact_name
+                          and not artifact.get("expired", False)
+                      )
+                  ]
+
+                  if not matches:
+                      raise RuntimeError(
+                          "Artifact obrigatório não encontrado: "
+                          f"{artifact_name}"
+                      )
+
+                  matches.sort(
+                      key=lambda item: item.get("created_at", ""),
+                      reverse=True,
+                  )
+
+                  artifact = matches[0]
+
+                  run_id = artifact["workflow_run"]["id"]
+
+                  print()
+                  print("Sistema:", key)
+                  print("Artifact:", artifact_name)
+                  print("Artifact ID:", artifact["id"])
+                  print("Run ID:", run_id)
+                  print("Criado em:", artifact.get("created_at"))
+
+                  output.write(
+                      f"{key}_run_id={run_id}\n"
+                  )
+
+          print()
+          print("=" * 70)
+          print("7 ARTIFACTS LOCALIZADOS COM SUCESSO")
+          print("=" * 70)
+          PY
+
+      # ======================================================
+      # 7. DOWNLOAD — SP500
+      # ======================================================
+
+      - name: Download SP500 CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-sp500-output
+          path: cio_inputs/sp500
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.sp500_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 8. DOWNLOAD — COPIAULTIMOROB
+      # ======================================================
+
+      - name: Download COPIAULTIMOROB CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-copiaultimorob-output
+          path: cio_inputs/copia
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.copia_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 9. DOWNLOAD — US EQUITIES
+      # ======================================================
+
+      - name: Download US Equities CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-us-equities-output
+          path: cio_inputs/us_equities
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.us_equities_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 10. DOWNLOAD — B3
+      # ======================================================
+
+      - name: Download B3 CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-b3-equities-output
+          path: cio_inputs/b3_equities
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.b3_equities_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 11. DOWNLOAD — AI INFRASTRUCTURE
+      # ======================================================
+
+      - name: Download AI Infrastructure CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-ai-infrastructure-output
+          path: cio_inputs/ai_infrastructure
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.ai_infrastructure_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 12. DOWNLOAD — FII
+      # ======================================================
+
+      - name: Download FII CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-fii-output
+          path: cio_inputs/fii
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.fii_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 13. DOWNLOAD — GROWTH
+      # ======================================================
+
+      - name: Download Growth CIO output
+        uses: actions/download-artifact@v5
+        with:
+          name: investment-cio-growth-output
+          path: cio_inputs/growth
+          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          run-id: ${{ steps.artifacts.outputs.growth_run_id }}
+          github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
+
+      # ======================================================
+      # 14. VALIDAR OS 7 OUTPUTS
+      # ======================================================
+
+      - name: Validate seven CIO inputs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agents.validator import validate_agent_output
+
+          expected = {
+              "sp500_cycle": Path("cio_inputs/sp500"),
+              "global_portfolio": Path("cio_inputs/copia"),
+              "us_equities": Path("cio_inputs/us_equities"),
+              "b3_equities": Path("cio_inputs/b3_equities"),
+              "ai_infrastructure": Path("cio_inputs/ai_infrastructure"),
+              "fii": Path("cio_inputs/fii"),
+              "growth": Path("cio_inputs/growth"),
+          }
+
+          print("=" * 70)
+          print("VALIDAÇÃO DOS 7 OUTPUTS UNIVERSAIS")
+          print("=" * 70)
+
+          found_systems = set()
+
+          for expected_system_id, directory in expected.items():
+
+              files = list(
+                  directory.rglob("*.json")
+              )
+
+              if len(files) != 1:
+                  raise RuntimeError(
+                      f"{expected_system_id}: esperado exatamente "
+                      f"1 JSON; encontrados: {len(files)}"
+                  )
+
+              path = files[0]
+
+              with path.open(
+                  "r",
+                  encoding="utf-8",
+              ) as file:
+                  payload = json.load(file)
+
+              validation = validate_agent_output(
+                  payload
+              )
+
+              if not validation["valid"]:
+                  raise RuntimeError(
+                      f"{expected_system_id}: output universal inválido: "
+                      f"{validation['errors']}"
+                  )
+
+              actual_system_id = payload.get(
+                  "system_id"
+              )
+
+              if actual_system_id != expected_system_id:
+                  raise RuntimeError(
+                      f"System ID incorreto em {path}: "
+                      f"esperado={expected_system_id}, "
+                      f"recebido={actual_system_id}"
+                  )
+
+              if actual_system_id in found_systems:
+                  raise RuntimeError(
+                      f"System ID duplicado: {actual_system_id}"
+                  )
+
+              found_systems.add(
+                  actual_system_id
+              )
+
+              print(
+                  f"{actual_system_id}: OK -> {path}"
+              )
+
+          if found_systems != set(expected):
+              raise RuntimeError(
+                  "Os sete sistemas oficiais não foram "
+                  "carregados corretamente."
+              )
+
+          print("=" * 70)
+          print("7 OUTPUTS UNIVERSAIS VÁLIDOS")
+          print("=" * 70)
+          PY
+
+      # ======================================================
+      # 15. EXECUTAR ORCHESTRATOR + NVIDIA NIM
       # ======================================================
 
       - name: Run Investment CIO AI
-        shell: bash
         run: |
           python - <<'PY'
           import json
@@ -118,93 +377,56 @@ jobs:
           print("=" * 70)
 
 
-          # ==================================================
-          # LOCALIZA OUTPUTS DOS 7 SISTEMAS
-          # ==================================================
-
-          possible_directories = [
-              Path("data/normalized"),
-              Path("data/collected"),
-              Path("data"),
-              Path("outputs"),
-              Path("artifacts"),
-          ]
-
-
-          def find_system_output(system_id):
-
-              candidates = []
-
-              for directory in possible_directories:
-
-                  if not directory.exists():
-                      continue
-
-                  patterns = [
-                      f"{system_id}.json",
-                      f"{system_id}_output.json",
-                      f"{system_id}_normalized.json",
-                      f"*{system_id}*.json",
-                  ]
-
-                  for pattern in patterns:
-                      candidates.extend(
-                          directory.glob(pattern)
-                      )
-
-              candidates = [
-                  path
-                  for path in candidates
-                  if path.is_file()
-              ]
-
-              if not candidates:
-                  raise RuntimeError(
-                      f"Output não encontrado para: {system_id}"
-                  )
-
-              # Arquivo mais recentemente modificado.
-              candidates.sort(
-                  key=lambda path: path.stat().st_mtime,
-                  reverse=True,
-              )
-
-              return candidates[0]
-
-
-          system_ids = [
-              "sp500_cycle",
-              "global_portfolio",
-              "us_equities",
-              "b3_equities",
-              "ai_infrastructure",
-              "fii",
-              "growth",
+          system_directories = [
+              ("sp500_cycle", Path("cio_inputs/sp500")),
+              ("global_portfolio", Path("cio_inputs/copia")),
+              ("us_equities", Path("cio_inputs/us_equities")),
+              ("b3_equities", Path("cio_inputs/b3_equities")),
+              (
+                  "ai_infrastructure",
+                  Path("cio_inputs/ai_infrastructure"),
+              ),
+              ("fii", Path("cio_inputs/fii")),
+              ("growth", Path("cio_inputs/growth")),
           ]
 
 
           outputs = []
 
 
-          for system_id in system_ids:
+          for expected_system_id, directory in system_directories:
 
-              path = find_system_output(
-                  system_id
+              files = list(
+                  directory.rglob("*.json")
               )
 
-              print(
-                  f"Output encontrado: "
-                  f"{system_id} -> {path}"
-              )
+              if len(files) != 1:
+                  raise RuntimeError(
+                      f"{expected_system_id}: esperado "
+                      f"exatamente 1 JSON."
+                  )
+
+              path = files[0]
 
               with path.open(
                   "r",
                   encoding="utf-8",
               ) as file:
+                  payload = json.load(file)
 
-                  data = json.load(file)
+              if payload.get("system_id") != expected_system_id:
+                  raise RuntimeError(
+                      f"System ID inesperado: "
+                      f"{payload.get('system_id')}"
+                  )
 
-              outputs.append(data)
+              outputs.append(
+                  payload
+              )
+
+              print(
+                  f"Carregado: {expected_system_id}"
+              )
 
 
           if len(outputs) != 7:
@@ -219,14 +441,11 @@ jobs:
           # ==================================================
 
           print()
-          print(
-              "Executando Orchestrator..."
-          )
+          print("Executando Orchestrator V1...")
 
           orchestrator_result = orchestrate(
               outputs
           )
-
 
           if not isinstance(
               orchestrator_result,
@@ -238,17 +457,74 @@ jobs:
               )
 
 
+          required_stages = {
+              "synthesis",
+              "risk",
+              "decision",
+              "executive_report",
+          }
+
+          missing_stages = [
+              stage
+              for stage in required_stages
+              if stage not in orchestrator_result
+          ]
+
+          if missing_stages:
+              raise RuntimeError(
+                  "Orchestrator não retornou todas "
+                  f"as etapas obrigatórias: {missing_stages}"
+              )
+
+          print(
+              "Orchestrator concluído."
+          )
+
+
           # ==================================================
           # NVIDIA NIM / NEMOTRON
           # ==================================================
 
+          print()
           print(
-              "Executando NVIDIA Nemotron..."
+              "Executando CIO AI Agent V1..."
           )
+
+          print(
+              "Provider: NVIDIA NIM"
+          )
+
+          print(
+              "Modelo: "
+              "nvidia/nemotron-3-super-120b-a12b"
+          )
+
 
           cio_result = run_cio_ai(
               orchestrator_result
           )
+
+
+          if not isinstance(
+              cio_result,
+              dict,
+          ):
+              raise RuntimeError(
+                  "CIO AI retornou resultado inválido."
+              )
+
+
+          analysis = cio_result.get(
+              "analysis"
+          )
+
+          if not isinstance(
+              analysis,
+              str,
+          ) or not analysis.strip():
+              raise RuntimeError(
+                  "NVIDIA NIM retornou análise vazia."
+              )
 
 
           # ==================================================
@@ -285,7 +561,6 @@ jobs:
               "w",
               encoding="utf-8",
           ) as file:
-
               json.dump(
                   orchestrator_result,
                   file,
@@ -299,7 +574,6 @@ jobs:
               "w",
               encoding="utf-8",
           ) as file:
-
               json.dump(
                   cio_result,
                   file,
@@ -313,15 +587,20 @@ jobs:
               "w",
               encoding="utf-8",
           ) as file:
-
               file.write(
-                  cio_result["analysis"]
+                  analysis
               )
 
 
           # ==================================================
-          # RESUMO SEGURO NO LOG
+          # RESUMO DA EXECUÇÃO
           # ==================================================
+
+          summary = cio_result.get(
+              "context_summary",
+              {},
+          )
+
 
           print()
           print("=" * 70)
@@ -330,11 +609,6 @@ jobs:
               "EXECUÇÃO CONCLUÍDA"
           )
           print("=" * 70)
-
-          print(
-              "Status:",
-              cio_result.get("status"),
-          )
 
           print(
               "Provider:",
@@ -346,9 +620,14 @@ jobs:
               cio_result.get("model"),
           )
 
-          summary = cio_result.get(
-              "context_summary",
-              {},
+          print(
+              "Pipeline:",
+              summary.get("pipeline_status"),
+          )
+
+          print(
+              "Sistemas esperados:",
+              summary.get("systems_expected"),
           )
 
           print(
@@ -366,14 +645,14 @@ jobs:
           )
 
           print(
-              "Kill Switch:",
+              "Global Kill Switch:",
               summary.get(
                   "global_kill_switch"
               ),
           )
 
           print(
-              "Restrições:",
+              "Número de restrições:",
               summary.get(
                   "restriction_count"
               ),
@@ -381,21 +660,34 @@ jobs:
 
           print()
           print(
-              "Relatório salvo em:",
-              cio_report_file,
+              "Orchestrator:",
+              orchestrator_file,
           )
 
           print(
-              "Resultado JSON salvo em:",
+              "Resultado CIO AI:",
               cio_json_file,
           )
 
-          print("=" * 70)
+          print(
+              "Relatório:",
+              cio_report_file,
+          )
 
+          print()
+          print(
+              "Execução em corretora: NÃO"
+          )
+
+          print(
+              "Decisão final humana: SIM"
+          )
+
+          print("=" * 70)
           PY
 
       # ======================================================
-      # ARTIFACT FINAL
+      # 16. PUBLICAR RESULTADO FINAL
       # ======================================================
 
       - name: Upload Investment CIO AI result
