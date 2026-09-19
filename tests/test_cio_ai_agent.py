@@ -13,9 +13,11 @@ from agents.cio_ai_agent import (
     SYSTEM_PROMPT,
     CIOAIInputError,
     CIOAIResponseError,
+    CIOAISemanticValidationError,
     validate_orchestrator_context,
     build_ai_context,
     build_ai_prompt,
+    validate_ai_analysis_semantics,
     run_cio_ai,
     analyze_cio_context,
 )
@@ -348,7 +350,7 @@ def run_tests():
 
     print("=" * 70)
     print("INVESTMENT CIO AGENT")
-    print("TESTE — CIO AI AGENT V1.4 / NVIDIA NIM")
+    print("TESTE — CIO AI AGENT V1.5 / NVIDIA NIM")
     print("=" * 70)
 
     fixture = build_orchestrator_fixture()
@@ -357,8 +359,8 @@ def run_tests():
 
     # 1
     assert_test(
-        CIO_AI_VERSION == "1.4",
-        "IDENTIFICAÇÃO V1.4",
+        CIO_AI_VERSION == "1.5",
+        "IDENTIFICAÇÃO V1.5",
     )
 
     # 2
@@ -1355,12 +1357,169 @@ def run_tests():
     )
 
     # ========================================================
+    # NOVOS TESTES — BARREIRA DE FIDELIDADE SEMÂNTICA V1.5
+    # ========================================================
+
+    # 108
+    assert_test(
+        context["mandatory_policy"]["semantic_fidelity_barrier_enabled"] is True
+        and context["mandatory_policy"]["semantic_violations_must_fail_safe"] is True
+        and context["mandatory_policy"]["semantic_validation_must_not_change_source_data"] is True,
+        "BARREIRA DE FIDELIDADE V1.5 ATIVA",
+    )
+
+    # 109
+    valid_semantic_result = validate_ai_analysis_semantics(
+        (
+            "Há sinais específicos produzidos pelos sistemas e há "
+            "restrições globais ativas. Os fatos coexistem. "
+            "A decisão final permanece humana."
+        ),
+        context,
+    )
+
+    assert_test(
+        valid_semantic_result["status"] == "PASS"
+        and valid_semantic_result["violations"] == []
+        and valid_semantic_result["fail_safe"] is True,
+        "RELATÓRIO DESCRITIVO CONFORME PASSA",
+    )
+
+    # 110
+    try:
+        validate_ai_analysis_semantics(
+            "Há predominantemente sinais de espera no conjunto.",
+            context,
+        )
+        raise AssertionError(
+            "Quantificador distributivo sem evidência deveria ser bloqueado."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "QUANTIFICADOR SEM EVIDÊNCIA É BLOQUEADO",
+    )
+
+    # 111
+    try:
+        validate_ai_analysis_semantics(
+            "O Kill Switch impede qualquer exposição adicional.",
+            context,
+        )
+        raise AssertionError(
+            "Consequência operacional inventada deveria ser bloqueada."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "CONSEQUÊNCIA OPERACIONAL INVENTADA É BLOQUEADA",
+    )
+
+    # 112
+    try:
+        validate_ai_analysis_semantics(
+            "A situação exige cautela.",
+            context,
+        )
+        raise AssertionError(
+            "Prescrição sem fonte deveria ser bloqueada."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "PRESCRIÇÃO SEM FONTE É BLOQUEADA",
+    )
+
+    # 113
+    context_with_explicit_consequence = deepcopy(context)
+    context_with_explicit_consequence["risk"]["restrictions"].append(
+        {
+            "code": "SOURCE_EXPLICIT_OPERATIONAL_RULE",
+            "severity": "CRITICAL",
+            "source": "TEST_SOURCE",
+            "description": (
+                "O Kill Switch impede qualquer exposição adicional."
+            ),
+        }
+    )
+
+    explicit_consequence_result = validate_ai_analysis_semantics(
+        (
+            "Segundo TEST_SOURCE, o Kill Switch impede qualquer "
+            "exposição adicional."
+        ),
+        context_with_explicit_consequence,
+    )
+
+    assert_test(
+        explicit_consequence_result["status"] == "PASS",
+        "CONSEQUÊNCIA EXPLÍCITA NA FONTE É PERMITIDA",
+    )
+
+    # 114
+    semantic_fixture = deepcopy(fixture)
+    semantic_fixture_before = deepcopy(semantic_fixture)
+
+    validate_ai_analysis_semantics(
+        "Os sistemas apresentam sinais distintos. A decisão final permanece humana.",
+        build_ai_context(semantic_fixture),
+    )
+
+    assert_test(
+        semantic_fixture == semantic_fixture_before,
+        "VALIDADOR SEMÂNTICO NÃO ALTERA ORCHESTRATOR",
+    )
+
+    # 115
+    assert_test(
+        result["semantic_validation"]["status"] == "PASS"
+        and result["policy"]["semantic_fidelity_barrier_enabled"] is True
+        and result["policy"]["semantic_validation_passed"] is True
+        and result["policy"]["semantic_violations_accepted"] is False
+        and result["policy"]["semantic_fail_safe_enabled"] is True,
+        "RESULTADO EXPÕE BARREIRA SEMÂNTICA APROVADA",
+    )
+
+    # 116
+    blocked_client = FakeNVIDIAClient(
+        content="O Kill Switch impede qualquer exposição adicional."
+    )
+
+    try:
+        run_cio_ai(
+            fixture,
+            client=blocked_client,
+        )
+        raise AssertionError(
+            "run_cio_ai deveria rejeitar resposta semanticamente inválida."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "RUN CIO AI APLICA FAIL-SAFE PÓS-NEMOTRON",
+    )
+
+    # 117
+    assert_test(
+        CIOAISemanticValidationError.__mro__[1] is CIOAIResponseError,
+        "ERRO SEMÂNTICO INTEGRA HIERARQUIA DE RESPOSTA",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.4 — 107 TESTES OK"
+        "CIO AI AGENT V1.5 — 117 TESTES OK"
     )
     print("=" * 70)
 
