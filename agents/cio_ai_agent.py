@@ -1682,91 +1682,122 @@ def _extract_forbidden_semantic_terms(
     return found
 
 
+def _extract_semantic_violation_codes(
+    validation_error: Exception,
+) -> list[str]:
+    """
+    Extrai apenas os CÓDIGOS das violações semânticas.
+
+    Não reutiliza no prompt de reparo:
+    - a análise rejeitada;
+    - o detalhe textual rejeitado;
+    - as formulações literais que causaram a rejeição.
+
+    Isso reduz a reintrodução do próprio conteúdo inválido no prompt
+    enviado ao Nemotron durante a única autocorreção semântica.
+    """
+    error_text = str(validation_error)
+
+    supported_codes = (
+        "UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER",
+        "UNSUPPORTED_OPERATIONAL_CONSEQUENCE",
+        "UNSUPPORTED_PRESCRIPTIVE_LANGUAGE",
+    )
+
+    found = []
+    for code in supported_codes:
+        if code in error_text and code not in found:
+            found.append(code)
+
+    return found
+
+
 def _build_semantic_correction_prompt(
     original_prompt: str,
     rejected_analysis: str,
     validation_error: Exception,
 ) -> str:
     """
-    Solicita UMA reescrita integral da análise rejeitada.
+    Solicita UMA nova geração integral baseada no contexto original.
 
-    A autocorreção:
-    - não altera o contexto;
-    - não altera sinais, scores, rankings ou decisões;
-    - não cria recomendação;
-    - recebe uma lista dinâmica das formulações realmente rejeitadas;
-    - proíbe repetir essas formulações inclusive em metacomentários.
+    Regra crítica:
+    a resposta rejeitada e os detalhes textuais da violação NÃO são
+    reenviados ao modelo. O reparo recebe apenas os CÓDIGOS das classes
+    de violação e reconstrói a análise a partir do prompt/contexto
+    original.
+
+    `rejected_analysis` permanece na assinatura para compatibilidade
+    interna, mas seu conteúdo não é interpolado no prompt.
     """
-    forbidden_terms = _extract_forbidden_semantic_terms(validation_error)
+    del rejected_analysis
 
-    if forbidden_terms:
-        forbidden_block = "\n".join(
-            f"- {term}"
-            for term in forbidden_terms
+    violation_codes = _extract_semantic_violation_codes(
+        validation_error
+    )
+
+    if violation_codes:
+        violation_block = "\n".join(
+            f"- {code}"
+            for code in violation_codes
         )
     else:
-        forbidden_block = (
-            "- Todas as formulações identificadas no ERRO DA BARREIRA."
-        )
+        violation_block = "- SEMANTIC_FIDELITY_VIOLATION"
 
     return f"""
-A análise abaixo foi REJEITADA pela barreira de fidelidade semântica
+A geração anterior não passou pela barreira de fidelidade semântica
 do INVESTMENT CIO AI.
 
-ERRO DA BARREIRA:
-{validation_error}
+CLASSES DE VIOLAÇÃO DETECTADAS:
+{violation_block}
 
-TERMOS/FORMULAÇÕES PROIBIDOS NA RESPOSTA CORRIGIDA:
-{forbidden_block}
+IMPORTANTE:
 
-REGRA ABSOLUTA SOBRE AS FORMULAÇÕES PROIBIDAS:
+Você NÃO receberá a redação rejeitada nem os trechos textuais que
+causaram a rejeição.
 
-Nenhuma formulação listada acima pode aparecer em qualquer parte da
-resposta corrigida.
+Não tente reconstruir, citar, explicar ou comentar a resposta anterior.
 
-Isso inclui:
-- texto normal;
-- títulos;
-- citações;
-- exemplos;
-- listas;
-- observações;
-- explicações;
-- metacomentários;
-- comentários sobre a própria correção;
-- declaração final de conformidade.
+Faça uma NOVA análise integral exclusivamente a partir do
+PROMPT ORIGINAL E CONTEXTO fornecidos abaixo.
 
-NÃO mencione uma formulação proibida nem mesmo para dizer que ela:
-- foi removida;
-- é inadequada;
-- não possui suporte;
-- não foi utilizada;
-- seria proibida;
-- não deve ser usada.
+A resposta deve conter SOMENTE a nova análise final.
 
-NÃO tente contornar a barreira com sinônimos, paráfrases ou construções
-que preservem a mesma consequência operacional, distribuição,
-prescrição, causalidade ou obrigação não sustentada pelo contexto.
+Não inclua:
+- explicação sobre a correção;
+- comentário sobre a rejeição anterior;
+- comentário sobre a barreira;
+- nomes das classes de violação;
+- metacomentário de conformidade além da declaração final já exigida
+  pelo prompt original.
 
-ANÁLISE REJEITADA:
-{rejected_analysis}
+REGRAS DE RECONSTRUÇÃO:
 
-TAREFA DE CORREÇÃO:
+1. Se estiver presente a classe
+   UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER:
+   - não crie distribuição, proporção, frequência ou predominância
+     que não esteja explicitamente demonstrada no contexto;
+   - descreva fatos individualmente ou apenas sua existência;
+   - preserve exatamente o universo ao qual cada fato se aplica.
 
-Reescreva a análise completa preservando exatamente as 11 seções
-exigidas pelo prompt original e utilizando exclusivamente o contexto
-original.
+2. Se estiver presente a classe
+   UNSUPPORTED_OPERATIONAL_CONSEQUENCE:
+   - ao tratar restrições, descreva somente existência, origem,
+     estado, código e severidade explicitamente disponíveis;
+   - mencione consequência operacional somente quando ela estiver
+     literalmente sustentada pelo contexto e atribuída à fonte;
+   - não derive ação, bloqueio, redução, aumento, entrada, saída,
+     espera, rebalanceamento ou alteração de exposição por inferência.
 
-A resposta deve conter SOMENTE a análise corrigida.
+3. Se estiver presente a classe
+   UNSUPPORTED_PRESCRIPTIVE_LANGUAGE:
+   - use descrição neutra dos fatos de origem;
+   - não transforme fatos, estados ou restrições em obrigação,
+     orientação ou recomendação própria;
+   - preserve a decisão final humana.
 
-NÃO explique:
-- que houve correção;
-- que houve rejeição;
-- quais violações existiam;
-- quais termos foram removidos;
-- como a barreira funciona.
-
-REGRAS OBRIGATÓRIAS:
+REGRAS GERAIS OBRIGATÓRIAS:
+- preserve exatamente as 11 seções exigidas;
+- use exclusivamente o contexto original;
 - não acrescente fatos;
 - não acrescente causas;
 - não acrescente relações não sustentadas;
@@ -1775,45 +1806,29 @@ REGRAS OBRIGATÓRIAS:
 - não altere scores;
 - não altere rankings;
 - não altere decisões dos sistemas;
-- não transforme restrição em consequência operacional;
-- não use linguagem prescritiva própria;
-- não use quantificadores distributivos sem evidência explícita;
+- não transforme restrição em consequência operacional inferida;
+- não transforme descrição em prescrição;
 - não transforme metodologia em timing;
 - não transforme metodologia em causa;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
 - não transforme coexistência em convergência;
+- não crie quantificação distributiva sem evidência explícita;
+- preserve Kill Switch, Hard Block, restrições e governança exatamente
+  como aparecem no contexto;
 - preserve a decisão final humana.
 
-REGRAS ESPECÍFICAS DE REFORMULAÇÃO:
+Quando uma interpretação mais ampla não estiver explicitamente
+sustentada, use formulação estritamente descritiva e de menor alcance
+semântico.
 
-1. Se um quantificador distributivo foi rejeitado:
-   descreva fatos individualmente ou apenas a existência dos fatos
-   explicitamente presentes. Não crie distribuição implícita.
-
-2. Se uma consequência operacional foi rejeitada:
-   descreva somente o fato suportado pelo contexto, como existência,
-   origem, estado, código ou severidade da restrição. Não derive uma
-   consequência operacional adicional.
-
-3. Se linguagem prescritiva foi rejeitada:
-   converta a frase em descrição neutra do fato de origem. Não crie
-   obrigação, orientação ou recomendação para a decisão humana.
-
-4. Se não houver suporte explícito para uma interpretação:
-   prefira formulação estritamente descritiva e de menor alcance
-   semântico.
-
-5. Preserve exatamente o escopo da evidência:
-   não transforme um ativo em grupo, um subconjunto em totalidade,
-   metodologia em causa, status em explicação ou restrição em ação.
-
-Antes de devolver a resposta, faça uma verificação silenciosa:
-- nenhuma formulação proibida aparece em lugar algum;
-- nenhum sinônimo reproduz a mesma violação;
-- as 11 seções foram preservadas;
-- sinais, scores, rankings e decisões permanecem intactos;
-- a resposta contém apenas a análise final corrigida.
+Antes de responder, faça uma verificação silenciosa:
+- a resposta foi reconstruída apenas do contexto original;
+- nenhuma consequência operacional foi inferida;
+- nenhuma prescrição própria foi criada;
+- nenhuma distribuição não demonstrada foi criada;
+- nenhum sinal, score, ranking ou decisão foi alterado;
+- a resposta contém apenas a nova análise final.
 
 PROMPT ORIGINAL E CONTEXTO:
 {original_prompt}
