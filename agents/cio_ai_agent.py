@@ -1868,6 +1868,19 @@ Regras obrigatórias:
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
+- trate ENTRADA, ENTRADA FORTE, PRÉ-ENTRADA, AGUARDAR, AGUARDAR GATILHO,
+  AGUARDAR PULLBACK e AGUARDAR ROMPIMENTO exclusivamente como rótulos/sinais
+  dos sistemas quando estiverem presentes no contexto;
+- ao relatar esses sinais, prefira a forma neutra:
+  "o sistema informa/classifica o ticker como <SINAL>";
+- não acrescente aos sinais palavras como "oportunidade de entrada",
+  "possibilidade de entrada", "potencial de entrada" ou equivalentes;
+- não use "maioria", "maior parte", "grande parte", "principalmente",
+  "predominantemente", "geralmente", "em geral", "quase todos" ou equivalentes,
+  salvo quando a MESMA frase apresentar percentual, X de Y ou X/Y que sustente
+  explicitamente a distribuição;
+- se não houver evidência distributiva explícita, descreva os sinais
+  individualmente ou use somente "há sinais..." sem quantificar sua frequência;
 - não transforme status em causa;
 - não transforme coexistência em convergência;
 - não derive efeitos operacionais não explicitados pela fonte;
@@ -2088,6 +2101,17 @@ REGRAS GERAIS:
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
+- preserve ENTRADA, ENTRADA FORTE, PRÉ-ENTRADA, AGUARDAR, AGUARDAR GATILHO,
+  AGUARDAR PULLBACK e AGUARDAR ROMPIMENTO como rótulos literais dos sistemas;
+- para esses rótulos, use formulação descritiva do tipo
+  "o sistema informa/classifica o ticker como <SINAL>";
+- não acrescente "oportunidade de entrada", "possibilidade de entrada",
+  "potencial de entrada" ou expressão operacional equivalente;
+- não use "maioria", "maior parte", "grande parte", "principalmente",
+  "predominantemente", "geralmente", "em geral", "quase todos" ou equivalentes
+  sem percentual, X de Y ou X/Y explícito na mesma frase;
+- sem evidência distributiva explícita, descreva individualmente ou use apenas
+  formulação neutra como "há sinais..." sem afirmar frequência ou predominância;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
 - não transforme coexistência em convergência;
@@ -2127,6 +2151,7 @@ def _request_nvidia_analysis(
     selected_model: str,
     user_prompt: str,
     system_prompt: str = SYSTEM_PROMPT,
+    temperature: float = 1.0,
 ) -> str:
     """
     Executa NVIDIA NIM com resiliência somente para HTTP 503.
@@ -2153,7 +2178,7 @@ def _request_nvidia_analysis(
                         "content": user_prompt,
                     },
                 ],
-                temperature=1.0,
+                temperature=temperature,
                 top_p=0.95,
                 max_tokens=8192,
                 stream=False,
@@ -2270,6 +2295,7 @@ def run_cio_ai(
             selected_model,
             correction_prompt,
             system_prompt=SEMANTIC_CORRECTION_SYSTEM_PROMPT,
+            temperature=0.2,
         )
 
         # Fail-safe final:
