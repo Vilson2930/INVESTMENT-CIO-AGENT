@@ -1899,6 +1899,12 @@ Regras obrigatórias:
 - não transforme coexistência em convergência;
 - não derive efeitos operacionais não explicitados pela fonte;
 - não transforme descrição em obrigação ou recomendação própria;
+- nunca escreva como formulação própria "deve ser considerado", "deve ser considerada",
+  "devem ser considerados", "devem ser consideradas", "deve ser respeitado",
+  "deve ser respeitada", "devem ser respeitados", "devem ser respeitadas",
+  "exige cautela" ou "exige acompanhamento"; substitua por redação puramente
+  factual/descritiva, como "o contexto registra a restrição", "a restrição está
+  registrada no contexto" ou "o sistema informa a restrição";
 - mantenha a decisão final humana;
 - produza somente a nova análise final;
 - produza obrigatoriamente as 11 seções, nesta ordem:
@@ -2111,6 +2117,12 @@ REGRAS GERAIS:
 - não altere sinais, scores, rankings ou decisões;
 - não transforme restrição em efeito operacional inferido;
 - não transforme descrição em prescrição;
+- nunca escreva como formulação própria "deve ser considerado", "deve ser considerada",
+  "devem ser considerados", "devem ser consideradas", "deve ser respeitado",
+  "deve ser respeitada", "devem ser respeitados", "devem ser respeitadas",
+  "exige cautela" ou "exige acompanhamento"; use somente redação factual/descritiva,
+  como "o contexto registra a restrição", "a restrição está registrada no contexto"
+  ou "o sistema informa a restrição";
 - não transforme metodologia em timing ou causa;
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
 - na seção "SELEÇÃO X TIMING", nunca descreva metodologia, arquitetura, pesos,
