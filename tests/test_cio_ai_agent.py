@@ -2140,7 +2140,7 @@ Conteúdo interrompido antes das demais seções.
     try:
         validate_ai_analysis_semantics(
             "Timing is embedded in each signal, como Momentum 6M+12M.",
-            build_ai_context(sample_orchestrator),
+            context,
         )
         methodology_as_timing_blocked = False
     except CIOAISemanticValidationError as exc:
@@ -2156,7 +2156,7 @@ Conteúdo interrompido antes das demais seções.
     try:
         validate_ai_analysis_semantics(
             "A metodologia 20% Desconto + 80% Fundamentos constitui timing.",
-            build_ai_context(sample_orchestrator),
+            context,
         )
         weighted_methodology_as_timing_blocked = False
     except CIOAISemanticValidationError as exc:
@@ -2172,7 +2172,7 @@ Conteúdo interrompido antes das demais seções.
     try:
         validate_ai_analysis_semantics(
             "Monitor as oportunidades registradas pelos scanners.",
-            build_ai_context(sample_orchestrator),
+            context,
         )
         imperative_blocked = False
     except CIOAISemanticValidationError as exc:
@@ -2188,7 +2188,7 @@ Conteúdo interrompido antes das demais seções.
     try:
         validate_ai_analysis_semantics(
             "Watch the opportunity signals from the scanners.",
-            build_ai_context(sample_orchestrator),
+            context,
         )
         english_imperative_blocked = False
     except CIOAISemanticValidationError as exc:
@@ -2204,7 +2204,7 @@ Conteúdo interrompido antes das demais seções.
     try:
         validate_ai_analysis_semantics(
             "There are signals for potential entry opportunities despite risk restrictions.",
-            build_ai_context(sample_orchestrator),
+            context,
         )
         opportunity_operational_blocked = False
     except CIOAISemanticValidationError as exc:
@@ -2223,7 +2223,7 @@ Conteúdo interrompido antes das demais seções.
         "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY"
     )
     real_fidelity_retry_prompt = _build_semantic_correction_prompt(
-        build_ai_context(sample_orchestrator),
+        context,
         "texto rejeitado que não deve ser reinjetado",
         real_fidelity_error,
     )
