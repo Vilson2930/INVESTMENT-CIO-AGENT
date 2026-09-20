@@ -2337,12 +2337,61 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 163–165 — OBSERVAÇÃO DEVE SER DESCRITIVA
+    # ========================================================
+
+    # 163 — forma real "Monitorar" deve ser bloqueada pela barreira
+    try:
+        validate_ai_analysis_semantics(
+            "Monitorar kill switch global.",
+            context,
+        )
+        monitorar_blocked = False
+    except CIOAISemanticValidationError as exc:
+        monitorar_blocked = (
+            "UNSUPPORTED_IMPERATIVE_LANGUAGE" in str(exc)
+        )
+
+    assert_test(
+        monitorar_blocked,
+        "BARREIRA BLOQUEIA MONITORAR COMO DIRETIVA PRÓPRIA",
+    )
+
+    # 164 — reconstrução recebe regra específica para a seção de observação
+    assert_test(
+        'pontos prioritários para observação'
+            in deterministic_correction_system
+        and 'somente fatos' in deterministic_correction_system
+        and 'forma nominal/descritiva'
+            in deterministic_correction_system
+        and '"monitorar"' in deterministic_correction_system
+        and '"acompanhar"' in deterministic_correction_system
+        and '"observar"' in deterministic_correction_system
+        and '"verificar"' in deterministic_correction_system,
+        "RECONSTRUÇÃO EXIGE OBSERVAÇÃO NOMINAL E DESCRITIVA",
+    )
+
+    # 165 — a mesma trava também está no prompt de reconstrução enviado ao usuário
+    assert_test(
+        'pontos prioritários para observação'
+            in deterministic_correction_user
+        and 'somente fatos' in deterministic_correction_user
+        and 'forma nominal/descritiva'
+            in deterministic_correction_user
+        and '"monitorar"' in deterministic_correction_user
+        and '"acompanhar"' in deterministic_correction_user
+        and '"observar"' in deterministic_correction_user
+        and '"verificar"' in deterministic_correction_user,
+        "PROMPT DE RECONSTRUÇÃO PRESERVA OBSERVAÇÃO DESCRITIVA",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 162 TESTES OK"
+        "CIO AI AGENT V1.5 — 165 TESTES OK"
     )
     print("=" * 70)
 
