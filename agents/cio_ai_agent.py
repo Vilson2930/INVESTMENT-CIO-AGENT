@@ -1868,6 +1868,13 @@ Regras obrigatórias:
 - preserve o escopo exato de cada evidência;
 - não transforme metodologia em causa ou timing;
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
+- na seção "SELEÇÃO X TIMING", nunca descreva metodologia, arquitetura, pesos,
+  critérios, filtros, Financial Strength, Growth, Valuation, Momentum,
+  Fundamentos ou Desconto como timing, nem diga que o timing está "embutido",
+  "incorporado" ou "baseado" nesses elementos;
+- somente trate algo como timing quando o contexto o identificar explicitamente
+  como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
+  que o contexto não fornece evidência explícita de timing para aquela relação;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
   estados, divergências, restrições e sinais já presentes no contexto, em forma
@@ -2106,6 +2113,13 @@ REGRAS GERAIS:
 - não transforme descrição em prescrição;
 - não transforme metodologia em timing ou causa;
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
+- na seção "SELEÇÃO X TIMING", nunca descreva metodologia, arquitetura, pesos,
+  critérios, filtros, Financial Strength, Growth, Valuation, Momentum,
+  Fundamentos ou Desconto como timing, nem diga que o timing está "embutido",
+  "incorporado" ou "baseado" nesses elementos;
+- somente trate algo como timing quando o contexto o identificar explicitamente
+  como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
+  que o contexto não fornece evidência explícita de timing para aquela relação;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
   estados, divergências, restrições e sinais já presentes no contexto, em forma
