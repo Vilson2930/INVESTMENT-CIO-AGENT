@@ -50,7 +50,7 @@ except ImportError:
 # ============================================================
 
 CIO_AI_VERSION = "1.5"
-CIO_AI_BUILD = "1.5.194-GOVERNANCE-RECONSTRUCTION-FIX"
+CIO_AI_BUILD = "1.5.195-INTEGRATED-CIO-CONCLUSION"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -681,11 +681,19 @@ REGRAS OBRIGATÓRIAS:
     explicação do significado conjunto desses fatos, sem criar
     novos dados, causas, sinais ou recomendações.
 
-34. Sua interpretação pode explicar tensão, convergência,
-    divergência e coexistência entre sinais.
+34. Sua interpretação deve explicar tensão, convergência,
+    divergência e coexistência entre sinais e, a partir dessas
+    relações sustentadas pelo contexto, produzir uma CONCLUSÃO
+    ANALÍTICA INTEGRADA DO CIO.
 
-    Sua interpretação NÃO pode criar uma nova decisão
-    quantitativa ou operacional.
+    Essa conclusão é uma inferência analítica do CIO sobre o
+    significado conjunto dos fatos dos sete sistemas. Ela pode
+    sintetizar o cenário resultante do cruzamento entre regime,
+    risco, seleção, timing, oportunidades e restrições.
+
+    A conclusão analítica NÃO pode criar ou alterar fatos, sinais,
+    scores, causas não demonstradas, recomendações de investimento
+    ou decisões quantitativas/operacionais.
 
 35. Não use linguagem prescritiva própria.
 
@@ -723,7 +731,18 @@ REGRAS OBRIGATÓRIAS:
     sinais, declare que a relação não pode ser estabelecida
     com segurança a partir do contexto disponível.
 
-40. A SÍNTESE CIO é uma síntese interpretativa.
+40. A SÍNTESE CIO é a conclusão analítica integrada do agente.
+
+    Ela DEVE ir além de enumerar o que cada sistema informou:
+    deve cruzar os fatos preservados, ponderar convergências,
+    divergências e tensões entre as diferentes funções dos sete
+    sistemas e declarar, de forma explícita, qual é a leitura
+    conjunta do cenário.
+
+    Essa conclusão pode ser própria do CIO como inferência analítica,
+    desde que seja sustentada exclusivamente pelos fatos e relações
+    disponíveis no contexto e não seja atribuída falsamente a um
+    sistema de origem.
 
     Ela não é:
     - recomendação;
@@ -1167,8 +1186,16 @@ TAREFA
 
 Produza uma análise integrada dos sete sistemas.
 
-Sua tarefa é interpretar relações existentes no contexto.
-Não crie uma recomendação própria de investimento.
+Sua tarefa é interpretar e cruzar as relações existentes no contexto,
+ponderar os conflitos entre as diferentes funções dos sete sistemas e
+chegar a uma CONCLUSÃO CIO INTEGRADA sobre o significado do conjunto.
+
+Não se limite a resumir cada robô separadamente. O valor desta etapa é
+transformar os sete resultados em uma leitura conjunta única.
+
+A conclusão CIO pode ser uma inferência analítica própria do agente,
+desde que decorra exclusivamente dos fatos e relações sustentados pelo
+contexto. Não crie uma recomendação própria de investimento.
 
 REGRA DE ESCOPO:
 
@@ -1367,8 +1394,13 @@ compra/venda/exposição.
 
 10. SÍNTESE CIO
 
-Produza uma síntese integrada e exclusivamente interpretativa
-do cenário.
+Produza a CONCLUSÃO ANALÍTICA INTEGRADA do CIO sobre o cenário.
+
+Esta seção é o resultado principal do agente. Não faça apenas um resumo
+dos sete robôs. Cruze os fatos, pondere os conflitos entre as diferentes
+funções dos sistemas e declare explicitamente qual é a leitura conjunta
+que emerge do conjunto, sem transformar essa leitura em ordem ou
+recomendação de investimento.
 
 A síntese deve explicar:
 - o que os sistemas mostram em conjunto;
@@ -1376,7 +1408,13 @@ A síntese deve explicar:
 - onde existem divergências comprovadas;
 - onde há apenas coexistência de sinais;
 - como risco e oportunidade coexistem;
-- quais restrições permanecem ativas.
+- quais restrições permanecem ativas;
+- qual é a conclusão CIO resultante da combinação desses elementos.
+
+A conclusão deve distinguir claramente:
+- fatos de origem, que pertencem aos sistemas;
+- inferência analítica CIO, que pertence ao agente e representa a leitura
+  conjunta dos fatos sem alterar os fatos de origem.
 
 REGRA CRÍTICA DA SÍNTESE:
 
@@ -2372,7 +2410,9 @@ REGRAS GERAIS:
   11. RASTREABILIDADE
 - não reproduza o contexto JSON como resposta;
 - use exclusivamente o contexto estruturado original;
-- não acrescente fatos, causas, relações ou recomendações;
+- não acrescente fatos, causas não demonstradas ou recomendações;
+- reconstrua as relações sustentadas pelo contexto e produza novamente
+  a conclusão analítica integrada do CIO;
 - não altere sinais, scores, rankings ou decisões;
 - não transforme restrição em efeito operacional inferido;
 - não transforme descrição em prescrição;
@@ -2433,9 +2473,10 @@ REGRAS GERAIS:
 - preserve a decisão final humana;
 - não explique o processo de correção, rejeição ou validação.
 
-Quando uma interpretação mais ampla não estiver explicitamente
-sustentada, use formulação estritamente descritiva e de menor alcance
-semântico.
+Quando uma interpretação mais ampla não estiver sustentada pelos fatos
+e relações disponíveis, reduza o alcance da inferência. Isso não elimina
+a obrigação de produzir uma conclusão CIO integrada com o maior alcance
+analítico que o contexto efetivamente sustentar.
 
 CONTEXTO ESTRUTURADO ORIGINAL:
 {context_json}
