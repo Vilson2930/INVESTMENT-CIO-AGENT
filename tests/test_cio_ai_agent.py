@@ -1539,6 +1539,7 @@ def run_tests():
         contents=[
             "O Kill Switch impede qualquer exposição adicional.",
             "O Kill Switch impede qualquer exposição adicional.",
+            "O Kill Switch impede qualquer exposição adicional.",
         ]
     )
 
@@ -1555,8 +1556,8 @@ def run_tests():
         pass
 
     assert_test(
-        len(blocked_client.completions.calls) == 2,
-        "RUN CIO AI APLICA FAIL-SAFE APÓS UMA AUTOCORREÇÃO",
+        len(blocked_client.completions.calls) == 3,
+        "RUN CIO AI APLICA FAIL-SAFE APÓS DUAS AUTOCORREÇÕES",
     )
 
     # 117
@@ -1646,11 +1647,13 @@ def run_tests():
 
     # 123
     assert_test(
-        corrected_result["semantic_validation"]["max_semantic_retries"] == 1
+        corrected_result["semantic_validation"]["max_semantic_retries"] == 2
+        and corrected_result["semantic_validation"]["retry_count"] == 1
         and corrected_result["semantic_validation"]["first_rejection_recorded"] is True
+        and corrected_result["semantic_validation"]["second_rejection_recorded"] is False
         and corrected_result["policy"]["semantic_auto_correction_enabled"] is True
-        and corrected_result["policy"]["semantic_auto_correction_max_retries"] == 1,
-        "AUTOCORREÇÃO LIMITADA A UMA TENTATIVA",
+        and corrected_result["policy"]["semantic_auto_correction_max_retries"] == 2,
+        "AUTOCORREÇÃO LIMITADA A DUAS TENTATIVAS",
     )
 
     # 124
@@ -1878,7 +1881,7 @@ def run_tests():
         len(contamination_client.completions.calls) == 2
         and contamination_result["semantic_validation"]["retry_used"] is True
         and contamination_result["policy"]["semantic_auto_correction_used"] is True,
-        "RECONSTRUÇÃO MANTÉM EXATAMENTE UMA AUTOCORREÇÃO SEMÂNTICA",
+        "RECONSTRUÇÃO USA UMA AUTOCORREÇÃO QUANDO ELA É SUFICIENTE",
     )
 
     # ========================================================
@@ -2630,8 +2633,69 @@ Conteúdo interrompido antes das demais seções.
         "NVIDIA RECEBE MAPA DETERMINÍSTICO E REGRAS DE PRECEDÊNCIA",
     )
 
+    # ========================================================
+    # SEGUNDA RECONSTRUÇÃO SEMÂNTICA — V1.5
+    # ========================================================
+
+    # 181 — primeira reconstrução falha; segunda reconstrução recupera
+    second_retry_client = FakeNVIDIAClient(
+        contents=[
+            "O Kill Switch impede qualquer exposição adicional.",
+            "O cenário deve ser considerado.",
+            (
+                "Há uma restrição global de risco registrada no contexto. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    second_retry_result = run_cio_ai(
+        fixture,
+        client=second_retry_client,
+    )
+
+    assert_test(
+        second_retry_result["status"] == "OK"
+        and second_retry_result["semantic_validation"]["status"] == "PASS"
+        and len(second_retry_client.completions.calls) == 3,
+        "SEGUNDA RECONSTRUÇÃO RECUPERA APÓS DUAS REJEIÇÕES",
+    )
+
+    # 182 — metadados registram exatamente duas reconstruções
+    assert_test(
+        second_retry_result["semantic_validation"]["retry_used"] is True
+        and second_retry_result["semantic_validation"]["retry_count"] == 2
+        and second_retry_result["semantic_validation"]["max_semantic_retries"] == 2
+        and second_retry_result["semantic_validation"]["first_rejection_recorded"] is True
+        and second_retry_result["semantic_validation"]["second_rejection_recorded"] is True
+        and second_retry_result["policy"]["semantic_auto_correction_max_retries"] == 2,
+        "METADADOS REGISTRAM DUAS RECONSTRUÇÕES",
+    )
+
+    # 183 — segunda reconstrução também parte do contexto original
+    second_retry_prompt = (
+        second_retry_client.completions.calls[2]
+        ["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        "contexto estruturado original:" in second_retry_prompt
+        and '"sp500_cycle"' in second_retry_prompt
+        and '"global_portfolio"' in second_retry_prompt
+        and "o cenário deve ser considerado" not in second_retry_prompt,
+        "SEGUNDA RECONSTRUÇÃO NÃO REINJETA TEXTO REJEITADO",
+    )
+
+    # 184 — resposta válida de primeira não sofre chamadas adicionais
+    assert_test(
+        no_retry_result["semantic_validation"]["retry_count"] == 0
+        and no_retry_result["semantic_validation"]["second_rejection_recorded"] is False
+        and len(no_retry_client.completions.calls) == 1,
+        "SEM REJEIÇÃO CONTINUA COM UMA ÚNICA CHAMADA",
+    )
+
     print(
-        "CIO AI AGENT V1.5 — 180 TESTES OK"
+        "CIO AI AGENT V1.5 — 184 TESTES OK"
     )
     print("=" * 70)
 
