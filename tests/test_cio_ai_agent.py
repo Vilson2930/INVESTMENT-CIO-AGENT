@@ -2695,8 +2695,158 @@ Conteúdo interrompido antes das demais seções.
     )
 
     print(
-        "CIO AI AGENT V1.5 — 184 TESTES OK"
+        "CIO AI AGENT V1.5 — 192 TESTES OK"
     )
+
+    # ========================================================
+    # TESTES — RELAÇÕES CAUSAIS DETERMINÍSTICAS DE GOVERNANÇA
+    # ========================================================
+
+    # 185
+    causal_fact_map = build_deterministic_fact_map(fixture)
+
+    assert_test(
+        causal_fact_map["governance"]["hard_block"]["status"] == "INFORMED"
+        and causal_fact_map["governance"]["hard_block"]["value"] is True
+        and causal_fact_map["governance"]["broker_execution_allowed"]["value"] is False
+        and causal_fact_map["governance"]["human_decision_required"]["value"] is True,
+        "MAPA DETERMINÍSTICO PRESERVA FATOS DE GOVERNANÇA",
+    )
+
+    # 186
+    assert_test(
+        causal_fact_map["causal_relationships"]
+        ["kill_switch_causes_broker_execution_block"] == "NOT_INFORMED"
+        and causal_fact_map["causal_relationships"]
+        ["hard_block_causes_broker_execution_block"] == "NOT_INFORMED"
+        and causal_fact_map["causal_relationships"]
+        ["restrictions_cause_broker_execution_block"] == "NOT_INFORMED",
+        "MAPA NÃO INVENTA CAUSALIDADE DE GOVERNANÇA",
+    )
+
+    # 187
+    causal_context = build_ai_context(fixture)
+    causal_prompt = build_ai_prompt(causal_context).lower()
+
+    assert_test(
+        '"causal_relationships"' in causal_prompt
+        and '"kill_switch_causes_broker_execution_block": "not_informed"'
+        in causal_prompt
+        and "não autoriza afirmar aquela relação causal" in causal_prompt,
+        "PROMPT RECEBE RELAÇÕES CAUSAIS DETERMINÍSTICAS",
+    )
+
+    # 188
+    try:
+        validate_ai_analysis_semantics(
+            (
+                "A execução automática é bloqueada pelo Kill Switch. "
+                "A decisão final permanece humana."
+            ),
+            causal_context,
+        )
+        raise AssertionError(
+            "Causalidade Kill Switch -> execução deveria ser bloqueada."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "CAUSALIDADE KILL SWITCH PARA EXECUÇÃO É BLOQUEADA",
+    )
+
+    # 189
+    try:
+        validate_ai_analysis_semantics(
+            (
+                "O Hard Block impede a execução automática. "
+                "A decisão final permanece humana."
+            ),
+            causal_context,
+        )
+        raise AssertionError(
+            "Causalidade Hard Block -> execução deveria ser bloqueada."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "CAUSALIDADE HARD BLOCK PARA EXECUÇÃO É BLOQUEADA",
+    )
+
+    # 190
+    try:
+        validate_ai_analysis_semantics(
+            (
+                "As restrições impedem a execução automática. "
+                "A decisão final permanece humana."
+            ),
+            causal_context,
+        )
+        raise AssertionError(
+            "Causalidade restrições -> execução deveria ser bloqueada."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "CAUSALIDADE RESTRIÇÕES PARA EXECUÇÃO É BLOQUEADA",
+    )
+
+    # 191
+    separate_governance_facts = validate_ai_analysis_semantics(
+        (
+            "O contexto registra Kill Switch global ativo e Hard Block ativo. "
+            "A política registra execução em corretora não permitida. "
+            "A decisão final permanece humana."
+        ),
+        causal_context,
+    )
+
+    assert_test(
+        separate_governance_facts["status"] == "PASS"
+        and separate_governance_facts["violations"] == [],
+        "FATOS DE GOVERNANÇA SEPARADOS SEM CAUSALIDADE PASSAM",
+    )
+
+    # 192
+    causal_retry_client = FakeNVIDIAClient(
+        contents=[
+            (
+                "A execução automática é bloqueada pelo Kill Switch. "
+                "A decisão final permanece humana."
+            ),
+            (
+                "O contexto registra Kill Switch global ativo. "
+                "A política registra execução em corretora não permitida. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    causal_retry_result = run_cio_ai(
+        fixture,
+        client=causal_retry_client,
+    )
+
+    causal_retry_prompt = (
+        causal_retry_client.completions.calls[1]
+        ["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        causal_retry_result["status"] == "OK"
+        and causal_retry_result["semantic_validation"]["status"] == "PASS"
+        and causal_retry_result["semantic_validation"]["retry_used"] is True
+        and "unsupported_governance_causal_relationship"
+        in causal_retry_prompt,
+        "AUTOCORREÇÃO RECEBE CLASSE DE CAUSALIDADE DE GOVERNANÇA",
+    )
+
+
     print("=" * 70)
 
 
