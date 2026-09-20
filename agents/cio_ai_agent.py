@@ -293,6 +293,32 @@ def build_deterministic_fact_map(
                 "source": global_source,
             },
         },
+        "governance": {
+            "hard_block": {
+                "status": (
+                    "INFORMED"
+                    if "hard_block" in global_constraint
+                    else "NOT_INFORMED"
+                ),
+                "value": _clone(global_constraint.get("hard_block")),
+                "source": global_constraint.get("source", "RISK_AGENT"),
+            },
+            "broker_execution_allowed": {
+                "status": "INFORMED",
+                "value": False,
+                "source": "MANDATORY_POLICY",
+            },
+            "human_decision_required": {
+                "status": "INFORMED",
+                "value": True,
+                "source": "MANDATORY_POLICY",
+            },
+        },
+        "causal_relationships": {
+            "kill_switch_causes_broker_execution_block": "NOT_INFORMED",
+            "hard_block_causes_broker_execution_block": "NOT_INFORMED",
+            "restrictions_cause_broker_execution_block": "NOT_INFORMED",
+        },
     }
 
 
@@ -1129,6 +1155,9 @@ Regras obrigatórias:
   que o contexto não possui ou não identifica informação explícita de timing.
 - Não transforme a presença de um campo de timing em causa, recomendação,
   autorização operacional ou metodologia.
+- Em "deterministic_facts.causal_relationships", "NOT_INFORMED" significa que
+  o contexto não autoriza afirmar aquela relação causal. Preserve os fatos
+  envolvidos separadamente, sem criar causa e consequência entre eles.
 - Não altere nem recalcule os fatos determinísticos.
 
 =========================
@@ -1814,6 +1843,60 @@ def validate_ai_analysis_semantics(
                     "code": "UNSUPPORTED_OPERATIONAL_CONSEQUENCE",
                     "detail": matched_text,
                 })
+
+    # --------------------------------------------------------
+    # B2) Relação causal de governança não autorizada pelo mapa
+    # --------------------------------------------------------
+    deterministic_facts = _safe_dict(context.get("deterministic_facts"))
+    causal_relationships = _safe_dict(
+        deterministic_facts.get("causal_relationships")
+    )
+
+    governance_causal_patterns = (
+        (
+            "kill_switch_causes_broker_execution_block",
+            r"\b(?:execucao|operacao|acao automatica)\b[^.!?\n]{0,120}"
+            r"\b(?:impedid[ao]s?|bloquead[ao]s?|nao permitid[ao]s?)\b"
+            r"[^.!?\n]{0,120}\b(?:pelo|pela|por|devido ao|devido a|"
+            r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
+            r"[^.!?\n]{0,120}\bkill switch\b|"
+            r"\bkill switch\b[^.!?\n]{0,120}"
+            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:execucao|operacao|acao automatica)\b",
+        ),
+        (
+            "hard_block_causes_broker_execution_block",
+            r"\b(?:execucao|operacao|acao automatica)\b[^.!?\n]{0,120}"
+            r"\b(?:impedid[ao]s?|bloquead[ao]s?|nao permitid[ao]s?)\b"
+            r"[^.!?\n]{0,120}\b(?:pelo|pela|por|devido ao|devido a|"
+            r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
+            r"[^.!?\n]{0,120}\bhard block\b|"
+            r"\bhard block\b[^.!?\n]{0,120}"
+            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:execucao|operacao|acao automatica)\b",
+        ),
+        (
+            "restrictions_cause_broker_execution_block",
+            r"\b(?:execucao|operacao|acao automatica)\b[^.!?\n]{0,120}"
+            r"\b(?:impedid[ao]s?|bloquead[ao]s?|nao permitid[ao]s?)\b"
+            r"[^.!?\n]{0,120}\b(?:pelo|pela|por|devido ao|devido a|"
+            r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
+            r"[^.!?\n]{0,120}\brestric(?:ao|oes)\b|"
+            r"\brestric(?:ao|oes)\b[^.!?\n]{0,120}"
+            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:execucao|operacao|acao automatica)\b",
+        ),
+    )
+
+    for relationship_key, pattern in governance_causal_patterns:
+        if causal_relationships.get(relationship_key) != "NOT_INFORMED":
+            continue
+
+        for match in re.finditer(pattern, normalized_analysis):
+            violations.append({
+                "code": "UNSUPPORTED_GOVERNANCE_CAUSAL_RELATIONSHIP",
+                "detail": match.group(0).strip(),
+            })
 
     # --------------------------------------------------------
     # C) Prescrição própria sem suporte explícito na fonte
