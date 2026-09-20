@@ -897,7 +897,7 @@ def run_tests():
 
     # 51
     assert_test(
-        "a síntese cio é uma síntese interpretativa"
+        "a síntese cio é a conclusão analítica integrada do agente"
         in system_prompt_lower
         and
         "novo sinal"
@@ -905,7 +905,7 @@ def run_tests():
         and
         "novo score"
         in system_prompt_lower,
-        "SÍNTESE CIO SOMENTE INTERPRETATIVA",
+        "SÍNTESE CIO INTEGRADA SEM NOVO SINAL OU SCORE",
     )
 
     prompt_lower = prompt.lower()
@@ -1685,13 +1685,13 @@ def run_tests():
 
     # 126
     assert_test(
-        "formulação estritamente descritiva"
+        "reduza o alcance da inferência"
         in correction_user_prompt
-        and "menor alcance"
-        in correction_user_prompt
+        and "maior alcance" in correction_user_prompt
+        and "contexto efetivamente sustentar" in correction_user_prompt
         and "use exclusivamente o contexto estruturado original"
         in correction_user_prompt,
-        "AUTOCORREÇÃO ORIENTA REDUÇÃO DO ALCANCE SEMÂNTICO",
+        "AUTOCORREÇÃO LIMITA INFERÊNCIA AO ESCOPO SUSTENTADO",
     )
 
     # ========================================================
@@ -2847,8 +2847,8 @@ Conteúdo interrompido antes das demais seções.
 
     # 193 — fingerprint da revisão realmente carregada pelo GitHub
     assert_test(
-        CIO_AI_BUILD == "1.5.194-GOVERNANCE-RECONSTRUCTION-FIX",
-        "BUILD CORRETO DA CORREÇÃO CAUSAL CARREGADO",
+        CIO_AI_BUILD == "1.5.195-INTEGRATED-CIO-CONCLUSION",
+        "BUILD CORRETO DA CONCLUSÃO CIO INTEGRADA CARREGADO",
     )
 
     print("=" * 70)
@@ -2869,7 +2869,43 @@ Conteúdo interrompido antes das demais seções.
         "RECONSTRUÇÃO CAUSAL DE GOVERNANÇA RECEBE FORMA SEGURA",
     )
 
-    print("CIO AI AGENT V1.5 — 194 TESTES OK")
+    # 195 — o agente recebe mandato explícito para concluir sobre o conjunto
+    integrated_prompt = build_ai_prompt(context).lower()
+    assert_test(
+        "conclusão cio integrada" in integrated_prompt
+        and "não se limite a resumir cada robô separadamente" in integrated_prompt
+        and "leitura conjunta única" in integrated_prompt,
+        "PROMPT EXIGE CONCLUSÃO CIO INTEGRADA",
+    )
+
+    # 196 — a síntese deve cruzar os sete sistemas, não apenas enumerá-los
+    assert_test(
+        "resultado principal do agente" in integrated_prompt
+        and "cruze os fatos" in integrated_prompt
+        and "pondere os conflitos" in integrated_prompt
+        and "qual é a conclusão cio resultante" in integrated_prompt,
+        "SÍNTESE CIO CRUZA FATOS E PONDERA CONFLITOS",
+    )
+
+    # 197 — inferência analítica é permitida sem liberar recomendação operacional
+    system_prompt_integrated = SYSTEM_PROMPT.lower()
+    assert_test(
+        "conclusão analítica integrada" in system_prompt_integrated
+        and "inferência analítica" in system_prompt_integrated
+        and "não crie recomendações próprias de investimento" in system_prompt_integrated,
+        "INFERÊNCIA CIO PERMITIDA SEM RECOMENDAÇÃO OPERACIONAL",
+    )
+
+    # 198 — autocorreção preserva a obrigação de reconstruir a conclusão integrada
+    assert_test(
+        "produza novamente" in governance_repair_prompt
+        and "conclusão analítica integrada" in governance_repair_prompt
+        and "não acrescente fatos, causas não demonstradas ou recomendações"
+        in governance_repair_prompt,
+        "AUTOCORREÇÃO PRESERVA CONCLUSÃO CIO INTEGRADA",
+    )
+
+    print("CIO AI AGENT V1.5 — 198 TESTES OK")
 
 
 if __name__ == "__main__":
