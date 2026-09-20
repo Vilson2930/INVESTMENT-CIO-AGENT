@@ -21,6 +21,7 @@ from agents.cio_ai_agent import (
     validate_orchestrator_context,
     build_ai_context,
     build_deterministic_fact_map,
+    _build_semantic_correction_prompt,
     build_ai_prompt,
     validate_ai_analysis_structure,
     validate_ai_analysis_semantics,
@@ -2846,12 +2847,29 @@ Conteúdo interrompido antes das demais seções.
 
     # 193 — fingerprint da revisão realmente carregada pelo GitHub
     assert_test(
-        CIO_AI_BUILD == "1.5.193-GOVERNANCE-CAUSAL-FIX",
+        CIO_AI_BUILD == "1.5.194-GOVERNANCE-RECONSTRUCTION-FIX",
         "BUILD CORRETO DA CORREÇÃO CAUSAL CARREGADO",
     )
 
     print("=" * 70)
-    print("CIO AI AGENT V1.5 — 193 TESTES OK")
+    # 194 — reconstrução recebe forma segura e separada para causalidade de governança
+    governance_repair_prompt = _build_semantic_correction_prompt(
+        build_ai_context(fixture),
+        "texto rejeitado",
+        CIOAISemanticValidationError(
+            "UNSUPPORTED_GOVERNANCE_CAUSAL_RELATIONSHIP"
+        ),
+    ).lower()
+
+    assert_test(
+        "separe obrigatoriamente os fatos" in governance_repair_prompt
+        and "broker_execution_allowed" in governance_repair_prompt
+        and "human_decision_required" in governance_repair_prompt
+        and "não reformule a causalidade" in governance_repair_prompt,
+        "RECONSTRUÇÃO CAUSAL DE GOVERNANÇA RECEBE FORMA SEGURA",
+    )
+
+    print("CIO AI AGENT V1.5 — 194 TESTES OK")
 
 
 if __name__ == "__main__":
