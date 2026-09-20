@@ -2473,10 +2473,12 @@ def run_cio_ai(
     )
 
     semantic_retry_used = False
+    semantic_retry_count = 0
     first_semantic_rejection = None
+    second_semantic_rejection = None
 
     # ========================================================
-    # BARREIRA + UMA AUTOCORREÇÃO CONTROLADA — V1.5
+    # BARREIRA + ATÉ DUAS AUTOCORREÇÕES CONTROLADAS — V1.5
     # ========================================================
 
     try:
@@ -2493,6 +2495,7 @@ def run_cio_ai(
         CIOAISemanticValidationError,
     ) as first_error:
         semantic_retry_used = True
+        semantic_retry_count = 1
         first_semantic_rejection = str(first_error)
 
         correction_prompt = _build_semantic_correction_prompt(
@@ -2509,19 +2512,55 @@ def run_cio_ai(
             temperature=0.2,
         )
 
-        # Fail-safe final:
-        # a segunda resposta precisa passar pelas DUAS barreiras.
-        # Persistindo falha estrutural ou semântica, a exceção é
-        # propagada e nenhum relatório é aceito/publicado.
-        structural_validation = validate_ai_analysis_structure(
-            corrected_analysis,
-        )
-        semantic_validation = validate_ai_analysis_semantics(
-            corrected_analysis,
-            context,
-        )
+        try:
+            structural_validation = validate_ai_analysis_structure(
+                corrected_analysis,
+            )
+            semantic_validation = validate_ai_analysis_semantics(
+                corrected_analysis,
+                context,
+            )
 
-        analysis = corrected_analysis
+            analysis = corrected_analysis
+
+        except (
+            CIOAIStructuralValidationError,
+            CIOAISemanticValidationError,
+        ) as second_error:
+            semantic_retry_count = 2
+            second_semantic_rejection = str(second_error)
+
+            # Segunda e última reconstrução semântica.
+            # _build_semantic_correction_prompt reconstrói do zero
+            # usando somente o contexto estruturado original; a redação
+            # rejeitada não é reenviada ao modelo.
+            second_correction_prompt = _build_semantic_correction_prompt(
+                context,
+                corrected_analysis,
+                second_error,
+            )
+
+            second_corrected_analysis = _request_nvidia_analysis(
+                client,
+                selected_model,
+                second_correction_prompt,
+                system_prompt=SEMANTIC_CORRECTION_SYSTEM_PROMPT,
+                temperature=0.2,
+            )
+
+            # Fail-safe final:
+            # a terceira resposta precisa passar pelas DUAS barreiras.
+            # Persistindo falha estrutural ou semântica, a exceção é
+            # propagada e nenhum relatório é aceito/publicado.
+            structural_validation = validate_ai_analysis_structure(
+                second_corrected_analysis,
+            )
+            semantic_validation = validate_ai_analysis_semantics(
+                second_corrected_analysis,
+                context,
+            )
+
+            analysis = second_corrected_analysis
 
     # ========================================================
     # IMUTABILIDADE
@@ -2576,9 +2615,13 @@ def run_cio_ai(
         "semantic_validation": {
             **_clone(semantic_validation),
             "retry_used": semantic_retry_used,
-            "max_semantic_retries": 1,
+            "retry_count": semantic_retry_count,
+            "max_semantic_retries": 2,
             "first_rejection_recorded": (
                 first_semantic_rejection is not None
+            ),
+            "second_rejection_recorded": (
+                second_semantic_rejection is not None
             ),
         },
 
@@ -2704,7 +2747,7 @@ def run_cio_ai(
 
             "semantic_auto_correction_enabled": True,
 
-            "semantic_auto_correction_max_retries": 1,
+            "semantic_auto_correction_max_retries": 2,
 
             "semantic_auto_correction_used": semantic_retry_used,
 
