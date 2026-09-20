@@ -2228,12 +2228,62 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 156–159 — RECONSTRUÇÃO DETERMINÍSTICA
+    # ========================================================
+
+    # 156 — primeira geração preserva configuração original
+    assert_test(
+        correction_client.completions.calls[0]["temperature"] == 1.0,
+        "PRIMEIRA GERAÇÃO PRESERVA TEMPERATURA 1.0",
+    )
+
+    # 157 — somente a reconstrução usa temperatura reduzida
+    assert_test(
+        correction_client.completions.calls[1]["temperature"] == 0.2,
+        "RECONSTRUÇÃO USA TEMPERATURA 0.2",
+    )
+
+    # 158 — reconstrução proíbe quantificação distributiva sem evidência
+    deterministic_correction_system = (
+        correction_client.completions.calls[1]["messages"][0]["content"].lower()
+    )
+    deterministic_correction_user = (
+        correction_client.completions.calls[1]["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        "maioria" in deterministic_correction_system
+        and "principalmente" in deterministic_correction_system
+        and "x de y" in deterministic_correction_system
+        and "sem quantificar sua frequência" in deterministic_correction_system
+        and "maioria" in deterministic_correction_user
+        and "principalmente" in deterministic_correction_user,
+        "RECONSTRUÇÃO PROÍBE QUANTIFICADORES SEM EVIDÊNCIA",
+    )
+
+    # 159 — sinais permanecem rótulos; oportunidade não vira autorização operacional
+    assert_test(
+        "entrada forte" in deterministic_correction_system
+        and "pré-entrada" in deterministic_correction_system
+        and "aguardar pullback" in deterministic_correction_system
+        and "rótulos/sinais" in deterministic_correction_system
+        and "o sistema informa/classifica o ticker como <sinal>"
+            in deterministic_correction_system
+        and "oportunidade de entrada" in deterministic_correction_system
+        and "possibilidade de entrada" in deterministic_correction_system
+        and "potencial de entrada" in deterministic_correction_system
+        and "entrada forte" in deterministic_correction_user
+        and "rótulos literais dos sistemas" in deterministic_correction_user,
+        "RECONSTRUÇÃO PRESERVA RÓTULOS SEM CRIAR POSSIBILIDADE OPERACIONAL",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 155 TESTES OK"
+        "CIO AI AGENT V1.5 — 159 TESTES OK"
     )
     print("=" * 70)
 
