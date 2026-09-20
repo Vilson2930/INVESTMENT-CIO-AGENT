@@ -2694,10 +2694,6 @@ Conteúdo interrompido antes das demais seções.
         "SEM REJEIÇÃO CONTINUA COM UMA ÚNICA CHAMADA",
     )
 
-    print(
-        "CIO AI AGENT V1.5 — 192 TESTES OK"
-    )
-
     # ========================================================
     # TESTES — RELAÇÕES CAUSAIS DETERMINÍSTICAS DE GOVERNANÇA
     # ========================================================
@@ -2848,6 +2844,7 @@ Conteúdo interrompido antes das demais seções.
 
 
     print("=" * 70)
+    print("CIO AI AGENT V1.5 — 192 TESTES OK")
 
 
 if __name__ == "__main__":
