@@ -2541,12 +2541,68 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 175–177 — AUSÊNCIA DE INFORMAÇÃO NÃO É ESTADO NEGATIVO
+    # ========================================================
+
+    # 175 — reproduz a falha real: ausência do campo não autoriza "não possui Kill Switch"
+    context_without_kill_switch = deepcopy(context)
+    context_without_kill_switch["risk"]["global_risk"].pop(
+        "global_kill_switch",
+        None,
+    )
+    context_without_kill_switch["risk"]["global_constraint"].pop(
+        "global_kill_switch",
+        None,
+    )
+
+    try:
+        validate_ai_analysis_semantics(
+            "O sistema não possui Kill Switch.",
+            context_without_kill_switch,
+        )
+        absence_as_negative_blocked = False
+    except CIOAISemanticValidationError as exc:
+        absence_as_negative_blocked = (
+            "ABSENCE_AS_NEGATIVE_STATE" in str(exc)
+        )
+
+    assert_test(
+        absence_as_negative_blocked,
+        'BARREIRA BLOQUEIA AUSÊNCIA CONVERTIDA EM "NÃO POSSUI KILL SWITCH"',
+    )
+
+    # 176 — system prompt da reconstrução orienta ausência como informação não fornecida
+    assert_test(
+        "ausência de campo, chave, atributo ou informação no contexto não significa estado"
+        in deterministic_correction_system
+        and '"não possui"' in deterministic_correction_system
+        and '"não existe"' in deterministic_correction_system
+        and '"está inativo"' in deterministic_correction_system
+        and '"está desativado"' in deterministic_correction_system
+        and '"o contexto não informa"' in deterministic_correction_system,
+        "RECONSTRUÇÃO NÃO TRANSFORMA AUSÊNCIA EM ESTADO NEGATIVO",
+    )
+
+    # 177 — a mesma trava chega ao user prompt da reconstrução
+    assert_test(
+        "ausência de campo, chave, atributo ou informação no contexto não significa estado"
+        in deterministic_correction_user
+        and '"não possui"' in deterministic_correction_user
+        and '"não existe"' in deterministic_correction_user
+        and '"está inativo"' in deterministic_correction_user
+        and '"está desativado"' in deterministic_correction_user
+        and '"o contexto não informa"' in deterministic_correction_user,
+        "PROMPT DE RECONSTRUÇÃO NÃO TRANSFORMA AUSÊNCIA EM ESTADO NEGATIVO",
+    )
+
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 174 TESTES OK"
+        "CIO AI AGENT V1.5 — 177 TESTES OK"
     )
     print("=" * 70)
 
