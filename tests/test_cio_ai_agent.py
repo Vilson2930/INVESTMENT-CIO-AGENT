@@ -2278,12 +2278,71 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 160–162 — CAUSALIDADE DE RESTRIÇÃO OPERACIONAL
+    # ========================================================
+
+    # 160 — restrição global não pode virar causa de impedimento de ação automática
+    try:
+        validate_ai_analysis_semantics(
+            (
+                "A restrição de risco global impede qualquer ação automática."
+            ),
+            context,
+        )
+        raise AssertionError(
+            "Restrição não deveria poder criar impedimento operacional causal."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "BARREIRA BLOQUEIA RESTRIÇÃO COMO CAUSA DE AÇÃO AUTOMÁTICA",
+    )
+
+    # 161 — sinais não podem virar não-autorização de execução por causa da restrição
+    try:
+        validate_ai_analysis_semantics(
+            (
+                "Esses sinais não são convertidos em autorização de execução "
+                "devido à restrição global de risco."
+            ),
+            context,
+        )
+        raise AssertionError(
+            "Restrição não deveria criar causalidade de autorização de execução."
+        )
+    except CIOAISemanticValidationError:
+        pass
+
+    assert_test(
+        True,
+        "BARREIRA BLOQUEIA RESTRIÇÃO COMO CAUSA DE AUTORIZAÇÃO DE EXECUÇÃO",
+    )
+
+    # 162 — fatos verdadeiros permanecem permitidos quando descritos separadamente
+    restriction_descriptive_result = validate_ai_analysis_semantics(
+        (
+            "Há uma restrição global de risco registrada no contexto. "
+            "A política informa que a execução em corretora não é permitida. "
+            "A decisão final permanece humana."
+        ),
+        context,
+    )
+
+    assert_test(
+        restriction_descriptive_result["status"] == "PASS"
+        and restriction_descriptive_result["violations"] == [],
+        "BARREIRA PRESERVA FATOS SEM CRIAR NEXO CAUSAL",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 159 TESTES OK"
+        "CIO AI AGENT V1.5 — 162 TESTES OK"
     )
     print("=" * 70)
 
