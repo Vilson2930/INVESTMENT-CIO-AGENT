@@ -1706,28 +1706,6 @@ def validate_ai_analysis_semantics(
                 })
 
     # --------------------------------------------------------
-    # C2) Ausência de informação transformada em estado negativo
-    # --------------------------------------------------------
-    # Fail-safe estreito: ausência de Kill Switch no registro não autoriza
-    # a IA a convertê-la em "não possui", "não existe", "inativo" ou "desativado".
-    unsupported_absence_patterns = (
-        r"\bnao possui (?:um )?kill switch\b",
-        r"\bnao existe (?:um )?kill switch\b",
-        r"\bkill switch (?:esta )?inativo\b",
-        r"\bkill switch (?:esta )?desativado\b",
-    )
-
-    for pattern in unsupported_absence_patterns:
-        for match in re.finditer(pattern, normalized_analysis):
-            matched_text = match.group(0)
-
-            if matched_text not in context_corpus:
-                violations.append({
-                    "code": "ABSENCE_AS_NEGATIVE_STATE",
-                    "detail": matched_text,
-                })
-
-    # --------------------------------------------------------
     # D) Metodologia/arquitetura transformada em timing
     # --------------------------------------------------------
     # Detecta a relação indevida somente quando termos de metodologia
@@ -1935,11 +1913,6 @@ Regras obrigatórias:
 - não transforme status em causa;
 - não transforme coexistência em convergência;
 - não derive efeitos operacionais não explicitados pela fonte;
-- ausência de campo, chave, atributo ou informação no contexto NÃO significa estado
-  negativo; não escreva "não possui", "não existe", "está inativo", "está desativado"
-  ou equivalente para Kill Switch, Hard Block ou outra propriedade apenas porque ela
-  não aparece no registro; quando o contexto não informar essa propriedade para o
-  sistema citado, diga somente que "o contexto não informa" essa propriedade;
 - não transforme descrição em obrigação ou recomendação própria;
 - nunca escreva como formulação própria "deve ser considerado", "deve ser considerada",
   "devem ser considerados", "devem ser consideradas", "deve ser respeitado",
@@ -2209,11 +2182,6 @@ REGRAS GERAIS:
   formulação neutra como "há sinais..." sem afirmar frequência ou predominância;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
-- ausência de campo, chave, atributo ou informação no contexto NÃO significa estado
-  negativo; não escreva "não possui", "não existe", "está inativo", "está desativado"
-  ou equivalente para Kill Switch, Hard Block ou outra propriedade apenas porque ela
-  não aparece no registro; quando o contexto não informar essa propriedade para o
-  sistema citado, diga somente que "o contexto não informa" essa propriedade;
 - não transforme coexistência em convergência;
 - não crie quantificação distributiva sem evidência explícita;
 - preserve Kill Switch, Hard Block, restrições e governança exatamente
