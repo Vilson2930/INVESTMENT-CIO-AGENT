@@ -2434,10 +2434,25 @@ A resposta deve conter SOMENTE a nova análise final.
 - Para classe prescritiva, use descrição neutra dos fatos de origem e
   não transforme fatos, estados ou restrições em obrigação, orientação
   ou recomendação própria.
+- Para OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY, preserve ENTRADA, ENTRADA FORTE,
+  PRÉ-ENTRADA, AGUARDAR, AGUARDAR GATILHO, AGUARDAR PULLBACK e AGUARDAR
+  ROMPIMENTO somente como RÓTULOS literais da fonte. Nunca escreva
+  "oportunidade de entrada", "oportunidades de entrada", "possibilidade de entrada",
+  "possibilidades de entrada", "potencial de entrada", "potenciais de entrada" ou
+  equivalentes. Use exclusivamente forma factual: "o sistema classifica <ticker>
+  como <SINAL>". Não converta o rótulo em autorização, possibilidade, potencial
+  ou recomendação operacional.
 - Para UNSUPPORTED_GOVERNANCE_CAUSAL_RELATIONSHIP, NÃO reformule a causalidade.
   Separe obrigatoriamente os fatos: descreva Kill Switch, Hard Block e restrições
   apenas como estados registrados no contexto. Em frase separada, descreva
   broker_execution_allowed e human_decision_required conforme a política.
+  Quando causal_relationships = NOT_INFORMED, use frases independentes no formato:
+  "O contexto registra Kill Switch global: <valor>."
+  "O contexto registra Hard Block: <valor>."
+  "O contexto registra as restrições: <fatos presentes no contexto>."
+  "A política registra broker_execution_allowed: <valor>."
+  "A política registra human_decision_required: <valor>."
+  Nunca una essas frases com causa, efeito, motivo ou consequência.
   Não use "por", "devido a", "porque", "impede", "impedem", "bloqueia",
   "bloqueiam", "limita", "limitam", "proíbe" ou equivalentes para conectar
   governança/restrições à execução quando causal_relationships = NOT_INFORMED.
