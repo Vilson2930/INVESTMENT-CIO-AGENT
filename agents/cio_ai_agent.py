@@ -50,7 +50,7 @@ except ImportError:
 # ============================================================
 
 CIO_AI_VERSION = "1.5"
-CIO_AI_BUILD = "1.5.195-INTEGRATED-CIO-CONCLUSION"
+CIO_AI_BUILD = "1.5.196-REQUIRED-INTEGRATED-CONCLUSION"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -1396,6 +1396,18 @@ compra/venda/exposição.
 
 Produza a CONCLUSÃO ANALÍTICA INTEGRADA do CIO sobre o cenário.
 
+Dentro desta seção, inclua obrigatoriamente uma linha independente com o subtítulo:
+
+CONCLUSÃO CIO INTEGRADA
+
+Logo abaixo desse subtítulo, escreva uma conclusão explícita, não vazia, que responda:
+"Considerando conjuntamente os sete sistemas, qual é a leitura final do cenário de investimento?"
+
+Essa conclusão deve cruzar os sete sistemas como conjunto, ponderar os conflitos
+relevantes e declarar a leitura final do CIO. Não substitua essa conclusão por uma
+enumeração dos robôs nem por mera repetição dos fatos. A conclusão é inferência
+analítica do CIO, não recomendação operacional.
+
 Esta seção é o resultado principal do agente. Não faça apenas um resumo
 dos sete robôs. Cruze os fatos, pondere os conflitos entre as diferentes
 funções dos sistemas e declare explicitamente qual é a leitura conjunta
@@ -1705,12 +1717,41 @@ def validate_ai_analysis_structure(
                 f"{REQUIRED_REPORT_SECTIONS[idx]}"
             )
 
+    # A seção SÍNTESE CIO deve conter uma conclusão integrada explícita.
+    synthesis_start = found_positions[9]
+    synthesis_end = found_positions[10]
+    synthesis_lines = lines[synthesis_start + 1:synthesis_end]
+    conclusion_position = None
+
+    for index, line in enumerate(synthesis_lines):
+        if _normalize_report_heading(line) == _normalize_semantic_text(
+            "CONCLUSÃO CIO INTEGRADA"
+        ):
+            conclusion_position = index
+            break
+
+    if conclusion_position is None:
+        raise CIOAIStructuralValidationError(
+            "STRUCTURAL_MISSING_INTEGRATED_CONCLUSION: a seção SÍNTESE CIO "
+            "não contém o subtítulo obrigatório CONCLUSÃO CIO INTEGRADA."
+        )
+
+    conclusion_body = "\n".join(
+        synthesis_lines[conclusion_position + 1:]
+    ).strip()
+    if not conclusion_body:
+        raise CIOAIStructuralValidationError(
+            "STRUCTURAL_EMPTY_INTEGRATED_CONCLUSION: a CONCLUSÃO CIO "
+            "INTEGRADA está vazia."
+        )
+
     return {
         "status": "PASS",
         "barrier_version": CIO_AI_VERSION,
         "required_sections": len(REQUIRED_REPORT_SECTIONS),
         "sections_found": len(found_positions),
         "context_dump_detected": False,
+        "integrated_conclusion_present": True,
         "fail_safe": True,
     }
 
@@ -2207,6 +2248,10 @@ Regras obrigatórias:
   8. RESTRIÇÕES E GOVERNANÇA
   9. PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO
   10. SÍNTESE CIO
+     - dentro desta seção, inclua obrigatoriamente o subtítulo independente
+       CONCLUSÃO CIO INTEGRADA e, logo abaixo, uma conclusão explícita e não vazia
+       que responda qual é a leitura final do cenário considerando conjuntamente
+       os sete sistemas; não substitua essa conclusão por enumeração dos robôs.
   11. RASTREABILIDADE
 - não reproduza o contexto JSON como resposta;
 - não comente o processo de correção, rejeição ou validação.
@@ -2318,6 +2363,8 @@ def _extract_semantic_violation_codes(
         "STRUCTURAL_MISSING_SECTION",
         "STRUCTURAL_SECTION_ORDER",
         "STRUCTURAL_EMPTY_SECTION",
+        "STRUCTURAL_MISSING_INTEGRATED_CONCLUSION",
+        "STRUCTURAL_EMPTY_INTEGRATED_CONCLUSION",
     )
 
     found = []
@@ -2407,6 +2454,10 @@ REGRAS GERAIS:
   8. RESTRIÇÕES E GOVERNANÇA
   9. PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO
   10. SÍNTESE CIO
+     - dentro desta seção, inclua obrigatoriamente o subtítulo independente
+       CONCLUSÃO CIO INTEGRADA e, logo abaixo, uma conclusão explícita e não vazia
+       que responda qual é a leitura final do cenário considerando conjuntamente
+       os sete sistemas; não substitua essa conclusão por enumeração dos robôs.
   11. RASTREABILIDADE
 - não reproduza o contexto JSON como resposta;
 - use exclusivamente o contexto estruturado original;
