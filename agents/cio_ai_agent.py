@@ -1703,6 +1703,121 @@ def validate_ai_analysis_semantics(
                     "detail": matched_text,
                 })
 
+    # --------------------------------------------------------
+    # D) Metodologia/arquitetura transformada em timing
+    # --------------------------------------------------------
+    # Detecta a relação indevida somente quando termos de metodologia
+    # aparecem explicitamente classificados como timing na mesma frase.
+    methodology_terms = (
+        r"financial strength",
+        r"growth",
+        r"valuation",
+        r"momentum(?:\s+\d+m(?:\s*\+\s*\d+m)?)?",
+        r"fundamentos",
+        r"desconto",
+        r"ranking",
+        r"score interno",
+        r"filtro",
+        r"peneira",
+        r"\d+(?:[.,]\d+)?\s*%\s*valuation",
+        r"\d+(?:[.,]\d+)?\s*%\s*desconto",
+        r"\d+(?:[.,]\d+)?\s*%\s*fundamentos",
+    )
+
+    timing_relation_patterns = (
+        r"\btiming\s+(?:is|esta|está|fica|permanece|e|é)\s+"
+        r"(?:embedded|embutid[oa]|incorporad[oa]|basead[oa])",
+        r"\b(?:embedded|embutid[oa]|incorporad[oa])\s+(?:in|no|na|nos|nas)\s+"
+        r"(?:timing|sinal|sinais)",
+        r"\bmetodologia\b.{0,80}\btiming\b",
+        r"\barquitetura\b.{0,80}\btiming\b",
+        r"\bcriterios?\b.{0,80}\btiming\b",
+        r"\bcritérios?\b.{0,80}\btiming\b",
+    )
+
+    for sentence in sentences:
+        normalized_sentence = _normalize_semantic_text(sentence)
+        if not normalized_sentence:
+            continue
+
+        has_methodology = any(
+            re.search(pattern, normalized_sentence)
+            for pattern in methodology_terms
+        )
+        has_timing_relation = any(
+            re.search(pattern, normalized_sentence)
+            for pattern in timing_relation_patterns
+        )
+
+        if has_methodology and has_timing_relation:
+            violations.append({
+                "code": "METHODOLOGY_AS_TIMING",
+                "detail": sentence.strip(),
+            })
+
+    # --------------------------------------------------------
+    # E) Linguagem imperativa própria do CIO
+    # --------------------------------------------------------
+    # A seção de observação deve descrever fatos; não pode ordenar
+    # monitoramento/acompanhamento criado pela própria IA.
+    imperative_patterns = (
+        r"^\s*[-*•]?\s*monitor(?:e|ar)?\b",
+        r"^\s*[-*•]?\s*watch\b",
+        r"^\s*[-*•]?\s*follow\b",
+        r"^\s*[-*•]?\s*track\b",
+        r"^\s*[-*•]?\s*acompanhe\b",
+        r"^\s*[-*•]?\s*observe\b",
+        r"^\s*[-*•]?\s*monitore\b",
+    )
+
+    for line in analysis.splitlines():
+        normalized_line = _normalize_semantic_text(line)
+        if not normalized_line:
+            continue
+
+        # Remove numeração/lista apenas para detectar o verbo inicial.
+        normalized_line = re.sub(
+            r"^\s*(?:[-*•]|\d+[\.\)])\s*",
+            "",
+            normalized_line,
+        )
+
+        if any(
+            re.search(pattern, normalized_line)
+            for pattern in imperative_patterns
+        ):
+            # Se a formulação literal não veio da fonte, é instrução criada.
+            if normalized_line not in context_corpus:
+                violations.append({
+                    "code": "UNSUPPORTED_IMPERATIVE_LANGUAGE",
+                    "detail": line.strip(),
+                })
+
+    # --------------------------------------------------------
+    # F) Oportunidade transformada em possibilidade operacional
+    # --------------------------------------------------------
+    # "Oportunidade" pode ser relatada como fato de origem, mas não
+    # convertida pela IA em possibilidade de entrada/exposição/compra.
+    opportunity_operational_patterns = (
+        r"\bfor potential entry opportunit(?:y|ies)\b",
+        r"\bpotential entry opportunit(?:y|ies)\b",
+        r"\bpossibil(?:idade|idades) de entrada\b",
+        r"\bpotencial(?:is)? entrad(?:a|as)\b",
+        r"\boportunidade(?:s)? de entrada\b",
+        r"\bpossibil(?:idade|idades) de aumentar exposicao\b",
+        r"\bpossibil(?:idade|idades) de exposicao\b",
+        r"\bpotencial(?:mente)? comprar\b",
+    )
+
+    for pattern in opportunity_operational_patterns:
+        for match in re.finditer(pattern, normalized_analysis):
+            matched_text = match.group(0)
+            if matched_text not in context_corpus:
+                violations.append({
+                    "code": "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY",
+                    "detail": matched_text,
+                })
+
     # Remove duplicidades preservando ordem.
     unique_violations = []
     seen = set()
@@ -1750,6 +1865,9 @@ Regras obrigatórias:
 - preserve sinais, scores, rankings, decisões, restrições e governança;
 - preserve o escopo exato de cada evidência;
 - não transforme metodologia em causa ou timing;
+- mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
+- use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
+- não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
 - não transforme status em causa;
 - não transforme coexistência em convergência;
 - não derive efeitos operacionais não explicitados pela fonte;
@@ -1869,6 +1987,9 @@ def _extract_semantic_violation_codes(
         "UNSUPPORTED_DISTRIBUTIVE_QUANTIFIER",
         "UNSUPPORTED_OPERATIONAL_CONSEQUENCE",
         "UNSUPPORTED_PRESCRIPTIVE_LANGUAGE",
+        "METHODOLOGY_AS_TIMING",
+        "UNSUPPORTED_IMPERATIVE_LANGUAGE",
+        "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY",
         "STRUCTURAL_EMPTY_RESPONSE",
         "STRUCTURAL_CONTEXT_DUMP",
         "STRUCTURAL_MISSING_SECTION",
@@ -1964,6 +2085,9 @@ REGRAS GERAIS:
 - não transforme restrição em efeito operacional inferido;
 - não transforme descrição em prescrição;
 - não transforme metodologia em timing ou causa;
+- mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
+- use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
+- não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
 - não transforme status em causa;
 - não amplie o escopo da evidência;
 - não transforme coexistência em convergência;
