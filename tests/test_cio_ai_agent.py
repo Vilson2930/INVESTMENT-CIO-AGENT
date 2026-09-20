@@ -2134,12 +2134,116 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 150–155 — FIDELIDADE SEMÂNTICA DA EXECUÇÃO REAL
+    # ========================================================
+
+    try:
+        validate_ai_analysis_semantics(
+            "Timing is embedded in each signal, como Momentum 6M+12M.",
+            build_ai_context(sample_orchestrator),
+        )
+        methodology_as_timing_blocked = False
+    except CIOAISemanticValidationError as exc:
+        methodology_as_timing_blocked = (
+            "METHODOLOGY_AS_TIMING" in str(exc)
+        )
+
+    assert_test(
+        methodology_as_timing_blocked,
+        "BARREIRA BLOQUEIA METODOLOGIA TRANSFORMADA EM TIMING",
+    )
+
+    try:
+        validate_ai_analysis_semantics(
+            "A metodologia 20% Desconto + 80% Fundamentos constitui timing.",
+            build_ai_context(sample_orchestrator),
+        )
+        weighted_methodology_as_timing_blocked = False
+    except CIOAISemanticValidationError as exc:
+        weighted_methodology_as_timing_blocked = (
+            "METHODOLOGY_AS_TIMING" in str(exc)
+        )
+
+    assert_test(
+        weighted_methodology_as_timing_blocked,
+        "BARREIRA BLOQUEIA PESOS/METODOLOGIA COMO TIMING",
+    )
+
+    try:
+        validate_ai_analysis_semantics(
+            "Monitor as oportunidades registradas pelos scanners.",
+            build_ai_context(sample_orchestrator),
+        )
+        imperative_blocked = False
+    except CIOAISemanticValidationError as exc:
+        imperative_blocked = (
+            "UNSUPPORTED_IMPERATIVE_LANGUAGE" in str(exc)
+        )
+
+    assert_test(
+        imperative_blocked,
+        "BARREIRA BLOQUEIA LINGUAGEM IMPERATIVA PRÓPRIA",
+    )
+
+    try:
+        validate_ai_analysis_semantics(
+            "Watch the opportunity signals from the scanners.",
+            build_ai_context(sample_orchestrator),
+        )
+        english_imperative_blocked = False
+    except CIOAISemanticValidationError as exc:
+        english_imperative_blocked = (
+            "UNSUPPORTED_IMPERATIVE_LANGUAGE" in str(exc)
+        )
+
+    assert_test(
+        english_imperative_blocked,
+        "BARREIRA BLOQUEIA IMPERATIVO EM INGLÊS DA EXECUÇÃO REAL",
+    )
+
+    try:
+        validate_ai_analysis_semantics(
+            "There are signals for potential entry opportunities despite risk restrictions.",
+            build_ai_context(sample_orchestrator),
+        )
+        opportunity_operational_blocked = False
+    except CIOAISemanticValidationError as exc:
+        opportunity_operational_blocked = (
+            "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY" in str(exc)
+        )
+
+    assert_test(
+        opportunity_operational_blocked,
+        "BARREIRA BLOQUEIA OPORTUNIDADE COMO POSSIBILIDADE OPERACIONAL",
+    )
+
+    real_fidelity_error = CIOAISemanticValidationError(
+        "METHODOLOGY_AS_TIMING; "
+        "UNSUPPORTED_IMPERATIVE_LANGUAGE; "
+        "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY"
+    )
+    real_fidelity_retry_prompt = _build_semantic_correction_prompt(
+        build_ai_context(sample_orchestrator),
+        "texto rejeitado que não deve ser reinjetado",
+        real_fidelity_error,
+    )
+
+    assert_test(
+        "METHODOLOGY_AS_TIMING" in real_fidelity_retry_prompt
+        and "UNSUPPORTED_IMPERATIVE_LANGUAGE" in real_fidelity_retry_prompt
+        and "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY" in real_fidelity_retry_prompt
+        and "texto rejeitado que não deve ser reinjetado"
+            not in real_fidelity_retry_prompt,
+        "AUTOCORREÇÃO RECEBE NOVAS CLASSES SEM REINJETAR TEXTO REJEITADO",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 149 TESTES OK"
+        "CIO AI AGENT V1.5 — 155 TESTES OK"
     )
     print("=" * 70)
 
