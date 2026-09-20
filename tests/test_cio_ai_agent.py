@@ -2337,13 +2337,13 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
-    # TESTES 163–165 — OBSERVAÇÃO DEVE SER DESCRITIVA
+    # TESTES 163–165 — OBSERVAÇÃO DESCRITIVA NA RECONSTRUÇÃO
     # ========================================================
 
-    # 163 — forma real "Monitorar" deve ser bloqueada pela barreira
+    # 163 — forma real da falha deve continuar bloqueada
     try:
         validate_ai_analysis_semantics(
-            "Monitorar kill switch global.",
+            "Monitorar o status do kill switch global.",
             context,
         )
         monitorar_blocked = False
@@ -2357,32 +2357,26 @@ Conteúdo interrompido antes das demais seções.
         "BARREIRA BLOQUEIA MONITORAR COMO DIRETIVA PRÓPRIA",
     )
 
-    # 164 — reconstrução recebe regra específica para a seção de observação
+    # 164 — o system prompt da reconstrução proíbe diretivas de observação
     assert_test(
-        'pontos prioritários para observação'
-            in deterministic_correction_system
-        and 'somente fatos' in deterministic_correction_system
-        and 'forma nominal/descritiva'
+        "não inicie itens com verbos de ação ou acompanhamento"
             in deterministic_correction_system
         and '"monitorar"' in deterministic_correction_system
         and '"acompanhar"' in deterministic_correction_system
         and '"observar"' in deterministic_correction_system
         and '"verificar"' in deterministic_correction_system,
-        "RECONSTRUÇÃO EXIGE OBSERVAÇÃO NOMINAL E DESCRITIVA",
+        "RECONSTRUÇÃO PROÍBE DIRETIVAS DE OBSERVAÇÃO",
     )
 
-    # 165 — a mesma trava também está no prompt de reconstrução enviado ao usuário
+    # 165 — a mesma trava chega ao user prompt da reconstrução
     assert_test(
-        'pontos prioritários para observação'
-            in deterministic_correction_user
-        and 'somente fatos' in deterministic_correction_user
-        and 'forma nominal/descritiva'
+        "não inicie itens com verbos de ação ou acompanhamento"
             in deterministic_correction_user
         and '"monitorar"' in deterministic_correction_user
         and '"acompanhar"' in deterministic_correction_user
         and '"observar"' in deterministic_correction_user
         and '"verificar"' in deterministic_correction_user,
-        "PROMPT DE RECONSTRUÇÃO PRESERVA OBSERVAÇÃO DESCRITIVA",
+        "PROMPT DE RECONSTRUÇÃO PROÍBE DIRETIVAS DE OBSERVAÇÃO",
     )
 
     # ========================================================
