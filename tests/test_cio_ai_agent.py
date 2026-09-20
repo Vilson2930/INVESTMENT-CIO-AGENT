@@ -19,6 +19,7 @@ from agents.cio_ai_agent import (
     REQUIRED_REPORT_SECTIONS,
     validate_orchestrator_context,
     build_ai_context,
+    build_deterministic_fact_map,
     build_ai_prompt,
     validate_ai_analysis_structure,
     validate_ai_analysis_semantics,
@@ -2545,8 +2546,92 @@ Conteúdo interrompido antes das demais seções.
     # ========================================================
 
     print("=" * 70)
+
+    # ========================================================
+    # MAPA DETERMINÍSTICO DE FATOS — V1.5
+    # ========================================================
+
+    # 175 — ausência de Kill Switch no SP500 não vira estado negativo
+    fact_fixture = deepcopy(fixture)
+    fact_map = build_deterministic_fact_map(fact_fixture)
+
+    assert_test(
+        fact_map["kill_switch"]["sp500_cycle"]["status"] == "NOT_INFORMED"
+        and fact_map["kill_switch"]["sp500_cycle"]["observed_fields"] == [],
+        "MAPA: AUSÊNCIA DE KILL SWITCH SP500 = NOT_INFORMED",
+    )
+
+    # 176 — Kill Switch global é preservado com valor e fonte
+    assert_test(
+        fact_map["kill_switch"]["global_constraint"]["status"] == "INFORMED"
+        and fact_map["kill_switch"]["global_constraint"]["value"] is True
+        and fact_map["kill_switch"]["global_constraint"]["source"] == "RISK_AGENT",
+        "MAPA: KILL SWITCH GLOBAL PRESERVADO",
+    )
+
+    # 177 — presença de timing explícito é detectada deterministicamente
+    timing_fixture = deepcopy(fixture)
+    timing_fixture["decision"]["timing_probe"] = {
+        "system_id": "us_equities",
+        "ticker": "TEST",
+        "timing_method": "SOURCE_TIMING_METHOD",
+        "timing_status": "SOURCE_TIMING_STATUS",
+        "entry_timing_score": 77,
+        "timing_approved": True,
+        "timing_confidence": 0.81,
+    }
+    timing_map = build_deterministic_fact_map(timing_fixture)
+
+    assert_test(
+        timing_map["timing"]["information_present"] is True
+        and timing_map["timing"]["fields"]["timing_method"]["present"] is True
+        and timing_map["timing"]["fields"]["timing_status"]["present"] is True
+        and timing_map["timing"]["fields"]["entry_timing_score"]["present"] is True
+        and timing_map["timing"]["fields"]["timing_approved"]["present"] is True
+        and timing_map["timing"]["fields"]["timing_confidence"]["present"] is True,
+        "MAPA: TIMING EXPLÍCITO DETECTADO",
+    )
+
+    # 178 — contagem de timing vem da presença literal dos campos
+    timing_fixture["decision"]["timing_probe_2"] = {
+        "system_id": "b3_equities",
+        "ticker": "TEST2",
+        "timing_method": "SECOND_SOURCE_TIMING_METHOD",
+    }
+    timing_map_2 = build_deterministic_fact_map(timing_fixture)
+
+    assert_test(
+        timing_map_2["timing"]["fields"]["timing_method"]["occurrences"] == 2,
+        "MAPA: CONTAGEM DE CAMPOS DE TIMING É DETERMINÍSTICA",
+    )
+
+    # 179 — build_ai_context incorpora o mapa sem alterar o Orchestrator
+    context_fixture = deepcopy(timing_fixture)
+    context_fixture_before = deepcopy(context_fixture)
+    context_with_facts = build_ai_context(context_fixture)
+
+    assert_test(
+        "deterministic_facts" in context_with_facts
+        and context_with_facts["deterministic_facts"]["timing"]["information_present"] is True
+        and context_with_facts["deterministic_facts"]["kill_switch"]["sp500_cycle"]["status"] == "NOT_INFORMED"
+        and context_fixture == context_fixture_before,
+        "CONTEXTO INCORPORA MAPA SEM ALTERAR ORCHESTRATOR",
+    )
+
+    # 180 — prompt obriga o modelo a respeitar os fatos determinísticos
+    fact_prompt = build_ai_prompt(context_with_facts).lower()
+
+    assert_test(
+        "fatos determinísticos" in fact_prompt
+        and "not_informed" in fact_prompt
+        and "não significa false" in fact_prompt
+        and "timing.information_present" in fact_prompt
+        and "não possui ou não identifica informação explícita de timing" in fact_prompt,
+        "NVIDIA RECEBE MAPA DETERMINÍSTICO E REGRAS DE PRECEDÊNCIA",
+    )
+
     print(
-        "CIO AI AGENT V1.5 — 174 TESTES OK"
+        "CIO AI AGENT V1.5 — 180 TESTES OK"
     )
     print("=" * 70)
 
