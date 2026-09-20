@@ -1659,6 +1659,8 @@ def validate_ai_analysis_semantics(
         r"\breduz(?:em)? (?:a )?exposicao\b",
         r"\bimpede(?:m)? (?:qualquer )?exposicao\b",
         r"\bimpede(?:m)? (?:a )?entrada\b",
+        r"\bimpede(?:m)? (?:qualquer )?acao automatica\b",
+        r"\bnao (?:e|sao) convertid[oa]s? em autorizacao de execucao\b",
         r"\bexige(?:m)? (?:a )?saida\b",
         r"\bexige(?:m)? espera\b",
         r"\bexige(?:m)? preservacao de capital\b",
