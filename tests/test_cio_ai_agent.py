@@ -2412,12 +2412,53 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 168–170 — RECONSTRUÇÃO SEM PRESCRIÇÃO PRÓPRIA
+    # ========================================================
+
+    # 168 — reproduz a formulação prescritiva observada na execução real
+    try:
+        validate_ai_analysis_semantics(
+            "A restrição global de risco deve ser considerada.",
+            context,
+        )
+        deve_ser_considerada_blocked = False
+    except CIOAISemanticValidationError as exc:
+        deve_ser_considerada_blocked = (
+            "UNSUPPORTED_PRESCRIPTIVE_LANGUAGE" in str(exc)
+        )
+
+    assert_test(
+        deve_ser_considerada_blocked,
+        'BARREIRA BLOQUEIA "DEVE SER CONSIDERADA" COMO PRESCRIÇÃO PRÓPRIA',
+    )
+
+    # 169 — system prompt da reconstrução proíbe a formulação prescritiva
+    assert_test(
+        '"deve ser considerado"' in deterministic_correction_system
+        and '"deve ser considerada"' in deterministic_correction_system
+        and '"exige cautela"' in deterministic_correction_system
+        and '"exige acompanhamento"' in deterministic_correction_system
+        and "factual/descritiva" in deterministic_correction_system,
+        "RECONSTRUÇÃO PROÍBE FORMULAÇÃO PRESCRITIVA",
+    )
+
+    # 170 — a mesma trava chega ao user prompt da reconstrução
+    assert_test(
+        '"deve ser considerado"' in deterministic_correction_user
+        and '"deve ser considerada"' in deterministic_correction_user
+        and '"exige cautela"' in deterministic_correction_user
+        and '"exige acompanhamento"' in deterministic_correction_user
+        and "factual/descritiva" in deterministic_correction_user,
+        "PROMPT DE RECONSTRUÇÃO PROÍBE FORMULAÇÃO PRESCRITIVA",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 167 TESTES OK"
+        "CIO AI AGENT V1.5 — 170 TESTES OK"
     )
     print("=" * 70)
 
