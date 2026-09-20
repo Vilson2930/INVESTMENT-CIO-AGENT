@@ -187,6 +187,116 @@ def validate_orchestrator_context(
 
 
 # ============================================================
+# MAPA DETERMINÍSTICO DE FATOS — V1.5
+# ============================================================
+
+_TIMING_FACT_KEYS = (
+    "timing_method",
+    "timing_status",
+    "status_timing",
+    "entry_timing_score",
+    "timing_approved",
+    "timing_confidence",
+)
+
+
+def _walk_context(value: Any):
+    """Percorre o contexto sem alterar os dados de origem."""
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_context(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_context(child)
+
+
+def build_deterministic_fact_map(
+    orchestrator_output: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Extrai fatos de presença/ausência que não devem depender
+    da interpretação probabilística do Nemotron.
+
+    Ausência de campo nunca é convertida em estado negativo.
+    Nenhum indicador, score, sinal ou ranking é recalculado.
+    """
+    validate_orchestrator_context(orchestrator_output)
+
+    timing_fields = {
+        key: {"present": False, "occurrences": 0}
+        for key in _TIMING_FACT_KEYS
+    }
+    sp500_kill_switch_values = []
+
+    for node in _walk_context(orchestrator_output):
+        for key in _TIMING_FACT_KEYS:
+            if key in node:
+                timing_fields[key]["present"] = True
+                timing_fields[key]["occurrences"] += 1
+
+        if node.get("system_id") == "sp500_cycle":
+            for key in (
+                "kill_switch",
+                "global_kill_switch",
+                "survival_kill_switch",
+            ):
+                if key in node:
+                    sp500_kill_switch_values.append({
+                        "field": key,
+                        "value": _clone(node.get(key)),
+                    })
+
+    risk = _safe_dict(orchestrator_output.get("risk"))
+    global_constraint = _safe_dict(risk.get("global_constraint"))
+    global_risk = _safe_dict(risk.get("global_risk"))
+
+    global_present = False
+    global_value = None
+    global_source = None
+
+    if "global_kill_switch" in global_constraint:
+        global_present = True
+        global_value = _clone(global_constraint.get("global_kill_switch"))
+        global_source = global_constraint.get("source", "RISK_AGENT")
+    elif "global_kill_switch" in global_risk:
+        global_present = True
+        global_value = _clone(global_risk.get("global_kill_switch"))
+        global_source = "RISK_AGENT"
+
+    return {
+        "fact_map_version": CIO_AI_VERSION,
+        "source": "ORCHESTRATOR_CONTEXT",
+        "rules": {
+            "absence_is_not_negative_state": True,
+            "not_informed_is_not_false": True,
+            "facts_are_not_recalculated": True,
+        },
+        "timing": {
+            "information_present": any(
+                item["present"] for item in timing_fields.values()
+            ),
+            "fields": timing_fields,
+        },
+        "kill_switch": {
+            "sp500_cycle": {
+                "status": (
+                    "INFORMED"
+                    if sp500_kill_switch_values
+                    else "NOT_INFORMED"
+                ),
+                "observed_fields": sp500_kill_switch_values,
+            },
+            "global_constraint": {
+                "status": "INFORMED" if global_present else "NOT_INFORMED",
+                "value": global_value,
+                "source": global_source,
+            },
+        },
+    }
+
+
+# ============================================================
 # CONSTRUÇÃO DO CONTEXTO
 # ============================================================
 
@@ -218,6 +328,10 @@ def build_ai_context(
         risk.get("global_constraint")
     )
 
+    deterministic_facts = build_deterministic_fact_map(
+        orchestrator_output
+    )
+
     context = {
         "context_version": CIO_AI_VERSION,
 
@@ -235,6 +349,10 @@ def build_ai_context(
 
         "official_systems": _clone(
             OFFICIAL_SYSTEMS
+        ),
+
+        "deterministic_facts": _clone(
+            deterministic_facts
         ),
 
         "synthesis": _clone(
@@ -996,6 +1114,22 @@ CONTEXTO DO INVESTMENT CIO
 =========================
 
 {context_json}
+
+=========================
+FATOS DETERMINÍSTICOS
+=========================
+
+O campo "deterministic_facts" do contexto foi calculado por código antes
+da chamada ao modelo e deve prevalecer para fatos de presença/ausência.
+
+Regras obrigatórias:
+- "NOT_INFORMED" significa somente que o contexto não informa o atributo;
+  não significa False, inativo, desativado, inexistente ou "não possui".
+- Se deterministic_facts.timing.information_present for true, não afirme
+  que o contexto não possui ou não identifica informação explícita de timing.
+- Não transforme a presença de um campo de timing em causa, recomendação,
+  autorização operacional ou metodologia.
+- Não altere nem recalcule os fatos determinísticos.
 
 =========================
 TAREFA
@@ -1858,6 +1992,15 @@ def validate_ai_analysis_semantics(
 # ============================================================
 
 SEMANTIC_CORRECTION_SYSTEM_PROMPT = """
+REGRA DETERMINÍSTICA PRIORITÁRIA:
+- preserve integralmente o bloco deterministic_facts recebido;
+- NOT_INFORMED significa somente "o contexto não informa";
+- nunca converta NOT_INFORMED em False, inativo, desativado, inexistente ou "não possui";
+- se deterministic_facts.timing.information_present = true, não diga que o contexto
+  não possui ou não identifica informação explícita de timing;
+- a presença de timing não autoriza inferir causa, recomendação ou consequência operacional.
+
+
 Você é a camada de reconstrução semântica do INVESTMENT CIO AI.
 
 Reconstrua a análise usando somente o contexto estruturado fornecido.
