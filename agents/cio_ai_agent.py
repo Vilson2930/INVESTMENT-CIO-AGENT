@@ -1875,6 +1875,12 @@ Regras obrigatórias:
 - somente trate algo como timing quando o contexto o identificar explicitamente
   como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
   que o contexto não fornece evidência explícita de timing para aquela relação;
+- não escreva metacomentários explicando o que NÃO é timing e não cite
+  Financial Strength, Growth, Valuation, Momentum, Fundamentos, Desconto,
+  metodologia, arquitetura, pesos, critérios ou filtros em frases que contenham
+  a palavra "timing"; se não houver timing explicitamente identificado no contexto
+  para a relação analisada, omita essa comparação e descreva somente os sinais,
+  estados ou fatos efetivamente fornecidos pelo contexto;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
   estados, divergências, restrições e sinais já presentes no contexto, em forma
@@ -2132,6 +2138,12 @@ REGRAS GERAIS:
 - somente trate algo como timing quando o contexto o identificar explicitamente
   como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
   que o contexto não fornece evidência explícita de timing para aquela relação;
+- não escreva metacomentários explicando o que NÃO é timing e não cite
+  Financial Strength, Growth, Valuation, Momentum, Fundamentos, Desconto,
+  metodologia, arquitetura, pesos, critérios ou filtros em frases que contenham
+  a palavra "timing"; se não houver timing explicitamente identificado no contexto
+  para a relação analisada, omita essa comparação e descreva somente os sinais,
+  estados ou fatos efetivamente fornecidos pelo contexto;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
 - na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
   estados, divergências, restrições e sinais já presentes no contexto, em forma
