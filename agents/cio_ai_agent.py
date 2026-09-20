@@ -1408,6 +1408,34 @@ relevantes e declarar a leitura final do CIO. Não substitua essa conclusão por
 enumeração dos robôs nem por mera repetição dos fatos. A conclusão é inferência
 analítica do CIO, não recomendação operacional.
 
+REGRA DE QUALIDADE DA CONCLUSÃO CIO:
+A conclusão deve nomear explicitamente o PADRÃO CONJUNTO que emerge dos sete
+sistemas, em linguagem analítica e não operacional. Depois de preservar os fatos
+de origem, responda ao significado do conjunto em uma ou mais frases integradoras.
+Não escreva apenas uma sequência do tipo "o sistema A informa X; o sistema B
+informa Y; o sistema C informa Z". Use esses fatos como premissas e declare a
+inferência CIO que decorre da coexistência/tensão entre eles.
+
+A inferência integrada pode caracterizar, por exemplo, a coexistência entre um
+regime de mercado, um nível de risco global, sinais micro específicos e estados
+de governança, DESDE QUE cada componente esteja explicitamente sustentado pelo
+contexto. Essa caracterização não cria novo sinal, score, causa ou recomendação.
+
+A conclusão NÃO deve converter:
+- oportunidade em autorização operacional;
+- risco em ordem de reduzir exposição;
+- regime em ordem de aumentar exposição;
+- Kill Switch, Hard Block ou restrições em causa de bloqueio de execução quando
+  essa causalidade estiver como NOT_INFORMED;
+- seleção de ativos em voto macro.
+
+Quando houver tensão entre sinais macro/globais e sinais micro, declare o
+significado analítico dessa tensão sem resolvê-la com uma ação. Exemplo de forma
+analítica permitida: "o conjunto não descreve um cenário uniformemente alinhado
+em uma única direção", somente se essa leitura for sustentada pelos fatos
+presentes. Não copie este exemplo automaticamente: formule a conclusão a partir
+do contexto real recebido.
+
 Esta seção é o resultado principal do agente. Não faça apenas um resumo
 dos sete robôs. Cruze os fatos, pondere os conflitos entre as diferentes
 funções dos sistemas e declare explicitamente qual é a leitura conjunta
@@ -2251,7 +2279,20 @@ Regras obrigatórias:
      - dentro desta seção, inclua obrigatoriamente o subtítulo independente
        CONCLUSÃO CIO INTEGRADA e, logo abaixo, uma conclusão explícita e não vazia
        que responda qual é a leitura final do cenário considerando conjuntamente
-       os sete sistemas; não substitua essa conclusão por enumeração dos robôs.
+       os sete sistemas; não substitua essa conclusão por enumeração dos robôs;
+     - a CONCLUSÃO CIO INTEGRADA deve declarar o PADRÃO CONJUNTO que emerge dos
+       fatos preservados e explicar o significado analítico da combinação entre
+       regime, risco global, seleção/timing, oportunidades e governança quando
+       esses elementos estiverem presentes no contexto;
+     - não aceite como conclusão uma mera sequência "A informa X; B informa Y;
+       C informa Z"; use os fatos como premissas e produza a inferência CIO que
+       decorre do conjunto, sem criar ação, recomendação, score, causa ou novo sinal;
+     - se houver tensão entre macro/risco global e sinais micro, descreva o
+       significado analítico da tensão, sem resolvê-la com compra, venda, aumento,
+       redução, espera ou qualquer outra decisão operacional;
+     - preserve separadamente Kill Switch, Hard Block, restrições e política de
+       execução quando causal_relationships = NOT_INFORMED; a conclusão integrada
+       não pode transformar coexistência desses fatos em causalidade.
   11. RASTREABILIDADE
 - não reproduza o contexto JSON como resposta;
 - não comente o processo de correção, rejeição ou validação.
