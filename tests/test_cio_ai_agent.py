@@ -2219,11 +2219,11 @@ Conteúdo interrompido antes das demais seções.
 
     assert_test(
         "mantenha metodologia, arquitetura, pesos, critérios e filtros "
-        "separados de timing" in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
+        "separados de timing" in cio_ai_module.SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
         and "linguagem exclusivamente descritiva"
-            in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
+            in cio_ai_module.SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
         and "não transforme oportunidade em possibilidade operacional"
-            in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower(),
+            in cio_ai_module.SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower(),
         "RECONSTRUÇÃO LIMPA RECEBE AS NOVAS TRAVAS DE FIDELIDADE REAL",
     )
 
