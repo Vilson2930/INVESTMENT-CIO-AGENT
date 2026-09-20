@@ -2452,13 +2452,74 @@ Conteúdo interrompido antes das demais seções.
         "PROMPT DE RECONSTRUÇÃO PROÍBE FORMULAÇÃO PRESCRITIVA",
     )
 
+
+    # ========================================================
+    # TESTES 171–172 — RECONSTRUÇÃO SEM METACOMENTÁRIO DE TIMING
+    # ========================================================
+
+    # 171 — reproduz a falha real e confirma uma única reconstrução válida
+    meta_timing_client = FakeNVIDIAClient(
+        contents=[
+            (
+                "Timing está embutido nos métodos de cada sistema "
+                "(ex.: Momentum 6M + 12M, 20% Desconto + 80% Fundamentos)."
+            ),
+            (
+                "Os sistemas registram sinais distintos no contexto. "
+                "A decisão final permanece humana."
+            ),
+        ]
+    )
+
+    meta_timing_result = run_cio_ai(
+        fixture,
+        client=meta_timing_client,
+    )
+
+    meta_timing_correction_call = meta_timing_client.completions.calls[1]
+    meta_timing_system_prompt = (
+        meta_timing_correction_call["messages"][0]["content"].lower()
+    )
+    meta_timing_user_prompt = (
+        meta_timing_correction_call["messages"][1]["content"].lower()
+    )
+
+    assert_test(
+        meta_timing_result["status"] == "OK"
+        and meta_timing_result["semantic_validation"]["status"] == "PASS"
+        and meta_timing_result["semantic_validation"]["retry_used"] is True
+        and len(meta_timing_client.completions.calls) == 2,
+        "RECONSTRUÇÃO RECUPERA METODOLOGIA TRATADA COMO TIMING",
+    )
+
+    # 172 — a nova trava chega aos dois prompts da reconstrução
+    required_meta_timing_fragments = (
+        "não escreva metacomentários explicando o que não é timing",
+        "frases que contenham",
+        'palavra "timing"',
+        "se não houver timing explicitamente identificado no contexto",
+        "omita essa comparação",
+    )
+
+    assert_test(
+        all(
+            fragment in meta_timing_system_prompt
+            for fragment in required_meta_timing_fragments
+        )
+        and all(
+            fragment in meta_timing_user_prompt
+            for fragment in required_meta_timing_fragments
+        ),
+        "RECONSTRUÇÃO PROÍBE METACOMENTÁRIO METODOLOGIA X TIMING",
+    )
+
     # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 170 TESTES OK"
+        "CIO AI AGENT V1.5 — 172 TESTES OK"
     )
     print("=" * 70)
 
