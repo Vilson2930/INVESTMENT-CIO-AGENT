@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from agents.cio_ai_agent import (
     CIO_AI_VERSION,
+    CIO_AI_BUILD,
     DEFAULT_MODEL,
     OFFICIAL_SYSTEMS,
     SYSTEM_PROMPT,
@@ -2843,8 +2844,14 @@ Conteúdo interrompido antes das demais seções.
     )
 
 
+    # 193 — fingerprint da revisão realmente carregada pelo GitHub
+    assert_test(
+        CIO_AI_BUILD == "1.5.193-GOVERNANCE-CAUSAL-FIX",
+        "BUILD CORRETO DA CORREÇÃO CAUSAL CARREGADO",
+    )
+
     print("=" * 70)
-    print("CIO AI AGENT V1.5 — 192 TESTES OK")
+    print("CIO AI AGENT V1.5 — 193 TESTES OK")
 
 
 if __name__ == "__main__":
