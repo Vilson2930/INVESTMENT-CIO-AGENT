@@ -1875,6 +1875,15 @@ Regras obrigatórias:
 - somente trate algo como timing quando o contexto o identificar explicitamente
   como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
   que o contexto não fornece evidência explícita de timing para aquela relação;
+- um campo de origem explicitamente nomeado "timing_method" constitui identificação
+  explícita de timing pelo próprio contexto; quando esse campo existir para o mesmo
+  ativo ou sinal, preserve e relate literalmente seu valor como "timing_method" da
+  fonte, sem convertê-lo em causa do sinal, gatilho, condição operacional ou regra
+  geral do sistema;
+- nunca declare que o contexto "não identifica timing" para um ativo ou sinal quando
+  esse mesmo registro contiver um campo "timing_method"; a ausência de timing só pode
+  ser declarada após verificar que não existe informação explícita de timing naquele
+  mesmo registro;
 - não escreva metacomentários explicando o que NÃO é timing e não cite
   Financial Strength, Growth, Valuation, Momentum, Fundamentos, Desconto,
   metodologia, arquitetura, pesos, critérios ou filtros em frases que contenham
@@ -2138,6 +2147,15 @@ REGRAS GERAIS:
 - somente trate algo como timing quando o contexto o identificar explicitamente
   como timing para aquele mesmo sinal ou ativo; sem essa evidência, declare apenas
   que o contexto não fornece evidência explícita de timing para aquela relação;
+- um campo de origem explicitamente nomeado "timing_method" constitui identificação
+  explícita de timing pelo próprio contexto; quando esse campo existir para o mesmo
+  ativo ou sinal, preserve e relate literalmente seu valor como "timing_method" da
+  fonte, sem convertê-lo em causa do sinal, gatilho, condição operacional ou regra
+  geral do sistema;
+- nunca declare que o contexto "não identifica timing" para um ativo ou sinal quando
+  esse mesmo registro contiver um campo "timing_method"; a ausência de timing só pode
+  ser declarada após verificar que não existe informação explícita de timing naquele
+  mesmo registro;
 - não escreva metacomentários explicando o que NÃO é timing e não cite
   Financial Strength, Growth, Valuation, Momentum, Fundamentos, Desconto,
   metodologia, arquitetura, pesos, critérios ou filtros em frases que contenham
