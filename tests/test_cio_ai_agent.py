@@ -49,7 +49,16 @@ def _as_structural_report(content):
         return content
     blocks = []
     for index, section in enumerate(sections, 1):
-        body = content if index == 1 else "Informação preservada conforme o contexto fornecido."
+        if index == 1:
+            body = content
+        elif section == "SÍNTESE CIO":
+            body = (
+                "Informação preservada conforme o contexto fornecido.\n\n"
+                "CONCLUSÃO CIO INTEGRADA\n"
+                "A leitura conjunta dos sete sistemas é preservada conforme o contexto fornecido."
+            )
+        else:
+            body = "Informação preservada conforme o contexto fornecido."
         blocks.append(f"{index}. {section}\n{body}")
     return "\n\n".join(blocks)
 
@@ -2101,7 +2110,9 @@ Conteúdo interrompido antes das demais seções.
     )
 
     empty_section_report = structural_report.replace(
-        "10. SÍNTESE CIO\nInformação preservada conforme o contexto fornecido.",
+        "10. SÍNTESE CIO\nInformação preservada conforme o contexto fornecido.\n\n"
+        "CONCLUSÃO CIO INTEGRADA\n"
+        "A leitura conjunta dos sete sistemas é preservada conforme o contexto fornecido.",
         "10. SÍNTESE CIO",
     )
     try:
@@ -2847,7 +2858,7 @@ Conteúdo interrompido antes das demais seções.
 
     # 193 — fingerprint da revisão realmente carregada pelo GitHub
     assert_test(
-        CIO_AI_BUILD == "1.5.195-INTEGRATED-CIO-CONCLUSION",
+        CIO_AI_BUILD == "1.5.196-REQUIRED-INTEGRATED-CONCLUSION",
         "BUILD CORRETO DA CONCLUSÃO CIO INTEGRADA CARREGADO",
     )
 
@@ -2905,7 +2916,60 @@ Conteúdo interrompido antes das demais seções.
         "AUTOCORREÇÃO PRESERVA CONCLUSÃO CIO INTEGRADA",
     )
 
-    print("CIO AI AGENT V1.5 — 198 TESTES OK")
+    # 199 — prompt exige subtítulo explícito e resposta final conjunta
+    assert_test(
+        "conclusão cio integrada" in integrated_prompt
+        and "considerando conjuntamente os sete sistemas" in integrated_prompt
+        and "qual é a leitura final do cenário de investimento" in integrated_prompt,
+        "PROMPT EXIGE CONCLUSÃO CIO INTEGRADA EXPLÍCITA",
+    )
+
+    # 200 — barreira estrutural rejeita relatório sem a conclusão integrada
+    report_without_integrated_conclusion = structural_report.replace(
+        "\n\nCONCLUSÃO CIO INTEGRADA\n"
+        "A leitura conjunta dos sete sistemas é preservada conforme o contexto fornecido.",
+        "",
+    )
+    try:
+        validate_ai_analysis_structure(report_without_integrated_conclusion)
+        missing_integrated_conclusion_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        missing_integrated_conclusion_blocked = (
+            "STRUCTURAL_MISSING_INTEGRATED_CONCLUSION" in str(exc)
+        )
+    assert_test(
+        missing_integrated_conclusion_blocked,
+        "BARREIRA EXIGE CONCLUSÃO CIO INTEGRADA",
+    )
+
+    # 201 — barreira estrutural rejeita conclusão integrada vazia
+    report_with_empty_integrated_conclusion = structural_report.replace(
+        "CONCLUSÃO CIO INTEGRADA\n"
+        "A leitura conjunta dos sete sistemas é preservada conforme o contexto fornecido.",
+        "CONCLUSÃO CIO INTEGRADA",
+    )
+    try:
+        validate_ai_analysis_structure(report_with_empty_integrated_conclusion)
+        empty_integrated_conclusion_blocked = False
+    except CIOAIStructuralValidationError as exc:
+        empty_integrated_conclusion_blocked = (
+            "STRUCTURAL_EMPTY_INTEGRATED_CONCLUSION" in str(exc)
+        )
+    assert_test(
+        empty_integrated_conclusion_blocked,
+        "BARREIRA BLOQUEIA CONCLUSÃO CIO INTEGRADA VAZIA",
+    )
+
+    # 202 — autocorreção mantém a conclusão integrada obrigatória
+    assert_test(
+        "conclusão cio integrada" in governance_repair_prompt
+        and "leitura final do cenário" in governance_repair_prompt
+        and "não substitua essa conclusão por enumeração dos robôs"
+        in governance_repair_prompt,
+        "AUTOCORREÇÃO EXIGE CONCLUSÃO CIO INTEGRADA",
+    )
+
+    print("CIO AI AGENT V1.5 — 202 TESTES OK")
 
 
 if __name__ == "__main__":
