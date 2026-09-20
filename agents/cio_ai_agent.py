@@ -1861,7 +1861,7 @@ def validate_ai_analysis_semantics(
             r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
             r"[^.!?\n]{0,120}\bkill switch\b|"
             r"\bkill switch\b[^.!?\n]{0,120}"
-            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:impede|impedem|bloqueia|bloqueiam|nao permite|nao permitem)\b[^.!?\n]{0,120}"
             r"\b(?:execucao|operacao|acao automatica)\b",
         ),
         (
@@ -1872,7 +1872,7 @@ def validate_ai_analysis_semantics(
             r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
             r"[^.!?\n]{0,120}\bhard block\b|"
             r"\bhard block\b[^.!?\n]{0,120}"
-            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:impede|impedem|bloqueia|bloqueiam|nao permite|nao permitem)\b[^.!?\n]{0,120}"
             r"\b(?:execucao|operacao|acao automatica)\b",
         ),
         (
@@ -1883,7 +1883,7 @@ def validate_ai_analysis_semantics(
             r"em razao do|em razao da|como consequencia do|como consequencia da)\b"
             r"[^.!?\n]{0,120}\brestric(?:ao|oes)\b|"
             r"\brestric(?:ao|oes)\b[^.!?\n]{0,120}"
-            r"\b(?:impede|bloqueia|nao permite)\b[^.!?\n]{0,120}"
+            r"\b(?:impede|impedem|bloqueia|bloqueiam|nao permite|nao permitem)\b[^.!?\n]{0,120}"
             r"\b(?:execucao|operacao|acao automatica)\b",
         ),
     )
