@@ -1869,6 +1869,11 @@ Regras obrigatórias:
 - não transforme metodologia em causa ou timing;
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
+- na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
+  estados, divergências, restrições e sinais já presentes no contexto, em forma
+  nominal/descritiva; não inicie itens com verbos de ação ou acompanhamento como
+  "Monitorar", "Monitor", "Monitore", "Acompanhar", "Acompanhe", "Observar",
+  "Observe", "Verificar", "Verifique", "Watch", "Follow" ou "Track";
 - não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
 - trate ENTRADA, ENTRADA FORTE, PRÉ-ENTRADA, AGUARDAR, AGUARDAR GATILHO,
   AGUARDAR PULLBACK e AGUARDAR ROMPIMENTO exclusivamente como rótulos/sinais
@@ -2102,6 +2107,11 @@ REGRAS GERAIS:
 - não transforme metodologia em timing ou causa;
 - mantenha metodologia, arquitetura, pesos, critérios e filtros separados de timing;
 - use linguagem exclusivamente descritiva, sem comandos próprios de observação ou acompanhamento;
+- na seção "PONTOS PRIORITÁRIOS PARA OBSERVAÇÃO", escreva somente fatos,
+  estados, divergências, restrições e sinais já presentes no contexto, em forma
+  nominal/descritiva; não inicie itens com verbos de ação ou acompanhamento como
+  "Monitorar", "Monitor", "Monitore", "Acompanhar", "Acompanhe", "Observar",
+  "Observe", "Verificar", "Verifique", "Watch", "Follow" ou "Track";
 - não transforme oportunidade em possibilidade operacional de entrada, compra ou exposição;
 - preserve ENTRADA, ENTRADA FORTE, PRÉ-ENTRADA, AGUARDAR, AGUARDAR GATILHO,
   AGUARDAR PULLBACK e AGUARDAR ROMPIMENTO como rótulos literais dos sistemas;
