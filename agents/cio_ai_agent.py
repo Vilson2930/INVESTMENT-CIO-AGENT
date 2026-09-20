@@ -50,6 +50,7 @@ except ImportError:
 # ============================================================
 
 CIO_AI_VERSION = "1.5"
+CIO_AI_BUILD = "1.5.193-GOVERNANCE-CAUSAL-FIX"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -2264,6 +2265,7 @@ def _extract_semantic_violation_codes(
         "METHODOLOGY_AS_TIMING",
         "UNSUPPORTED_IMPERATIVE_LANGUAGE",
         "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY",
+        "UNSUPPORTED_GOVERNANCE_CAUSAL_RELATIONSHIP",
         "STRUCTURAL_EMPTY_RESPONSE",
         "STRUCTURAL_CONTEXT_DUMP",
         "STRUCTURAL_MISSING_SECTION",
