@@ -50,7 +50,7 @@ except ImportError:
 # ============================================================
 
 CIO_AI_VERSION = "1.5"
-CIO_AI_BUILD = "1.5.193-GOVERNANCE-CAUSAL-FIX"
+CIO_AI_BUILD = "1.5.194-GOVERNANCE-RECONSTRUCTION-FIX"
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -2083,6 +2083,15 @@ REGRA DETERMINÍSTICA PRIORITÁRIA:
 - se deterministic_facts.timing.information_present = true, não diga que o contexto
   não possui ou não identifica informação explícita de timing;
 - a presença de timing não autoriza inferir causa, recomendação ou consequência operacional.
+- quando deterministic_facts.causal_relationships marcar uma relação como NOT_INFORMED,
+  apresente os fatos de governança separadamente, sem conectá-los por causa, efeito,
+  motivo, impedimento, bloqueio ou autorização;
+- para governança, prefira formulação factual separada: informe o estado do Kill Switch,
+  do Hard Block e das restrições conforme o contexto; em frase separada, informe
+  broker_execution_allowed e human_decision_required conforme a política;
+- nunca escreva que Kill Switch, Hard Block ou restrições bloqueiam, impedem, limitam,
+  proíbem ou causam a impossibilidade de execução quando essa relação causal estiver
+  marcada como NOT_INFORMED.
 
 
 Você é a camada de reconstrução semântica do INVESTMENT CIO AI.
@@ -2340,6 +2349,13 @@ A resposta deve conter SOMENTE a nova análise final.
 - Para classe prescritiva, use descrição neutra dos fatos de origem e
   não transforme fatos, estados ou restrições em obrigação, orientação
   ou recomendação própria.
+- Para UNSUPPORTED_GOVERNANCE_CAUSAL_RELATIONSHIP, NÃO reformule a causalidade.
+  Separe obrigatoriamente os fatos: descreva Kill Switch, Hard Block e restrições
+  apenas como estados registrados no contexto. Em frase separada, descreva
+  broker_execution_allowed e human_decision_required conforme a política.
+  Não use "por", "devido a", "porque", "impede", "impedem", "bloqueia",
+  "bloqueiam", "limita", "limitam", "proíbe" ou equivalentes para conectar
+  governança/restrições à execução quando causal_relationships = NOT_INFORMED.
 
 REGRAS GERAIS:
 - produza exatamente as 11 seções abaixo, nesta ordem:
