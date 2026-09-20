@@ -2380,12 +2380,44 @@ Conteúdo interrompido antes das demais seções.
     )
 
     # ========================================================
+    # TESTES 166–167 — METODOLOGIA NÃO PODE VIRAR TIMING NA RECONSTRUÇÃO
+    # ========================================================
+
+    # 166 — system prompt da reconstrução proíbe explicitamente metodologia como timing
+    assert_test(
+        'na seção "seleção x timing"' in deterministic_correction_system
+        and "financial strength" in deterministic_correction_system
+        and "momentum" in deterministic_correction_system
+        and "fundamentos" in deterministic_correction_system
+        and "desconto" in deterministic_correction_system
+        and '"embutido"' in deterministic_correction_system
+        and '"incorporado"' in deterministic_correction_system
+        and "contexto não fornece evidência explícita de timing"
+            in deterministic_correction_system,
+        "RECONSTRUÇÃO PROÍBE METODOLOGIA COMO TIMING",
+    )
+
+    # 167 — a mesma trava específica chega ao user prompt da reconstrução
+    assert_test(
+        'na seção "seleção x timing"' in deterministic_correction_user
+        and "financial strength" in deterministic_correction_user
+        and "momentum" in deterministic_correction_user
+        and "fundamentos" in deterministic_correction_user
+        and "desconto" in deterministic_correction_user
+        and '"embutido"' in deterministic_correction_user
+        and '"incorporado"' in deterministic_correction_user
+        and "contexto não fornece evidência explícita de timing"
+            in deterministic_correction_user,
+        "PROMPT DE RECONSTRUÇÃO PROÍBE METODOLOGIA COMO TIMING",
+    )
+
+    # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 165 TESTES OK"
+        "CIO AI AGENT V1.5 — 167 TESTES OK"
     )
     print("=" * 70)
 
