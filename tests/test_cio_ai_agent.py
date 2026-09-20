@@ -2217,24 +2217,14 @@ Conteúdo interrompido antes das demais seções.
         "BARREIRA BLOQUEIA OPORTUNIDADE COMO POSSIBILIDADE OPERACIONAL",
     )
 
-    real_fidelity_error = CIOAISemanticValidationError(
-        "METHODOLOGY_AS_TIMING; "
-        "UNSUPPORTED_IMPERATIVE_LANGUAGE; "
-        "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY"
-    )
-    real_fidelity_retry_prompt = _build_semantic_correction_prompt(
-        context,
-        "texto rejeitado que não deve ser reinjetado",
-        real_fidelity_error,
-    )
-
     assert_test(
-        "METHODOLOGY_AS_TIMING" in real_fidelity_retry_prompt
-        and "UNSUPPORTED_IMPERATIVE_LANGUAGE" in real_fidelity_retry_prompt
-        and "OPPORTUNITY_AS_OPERATIONAL_POSSIBILITY" in real_fidelity_retry_prompt
-        and "texto rejeitado que não deve ser reinjetado"
-            not in real_fidelity_retry_prompt,
-        "AUTOCORREÇÃO RECEBE NOVAS CLASSES SEM REINJETAR TEXTO REJEITADO",
+        "mantenha metodologia, arquitetura, pesos, critérios e filtros "
+        "separados de timing" in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
+        and "linguagem exclusivamente descritiva"
+            in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower()
+        and "não transforme oportunidade em possibilidade operacional"
+            in SEMANTIC_CORRECTION_SYSTEM_PROMPT.lower(),
+        "RECONSTRUÇÃO LIMPA RECEBE AS NOVAS TRAVAS DE FIDELIDADE REAL",
     )
 
     # ========================================================
