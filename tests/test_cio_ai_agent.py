@@ -2513,13 +2513,40 @@ Conteúdo interrompido antes das demais seções.
         "RECONSTRUÇÃO PROÍBE METACOMENTÁRIO METODOLOGIA X TIMING",
     )
 
+
+    # ========================================================
+    # TESTES — TIMING_METHOD EXPLÍCITO NA FONTE
+    # ========================================================
+
+    # 173
+    assert_test(
+        'um campo de origem explicitamente nomeado "timing_method"'
+        in deterministic_correction_system
+        and "preserve e relate literalmente seu valor"
+        in deterministic_correction_system
+        and "não identifica timing"
+        in deterministic_correction_system,
+        "RECONSTRUÇÃO RECONHECE TIMING_METHOD EXPLÍCITO",
+    )
+
+    # 174
+    assert_test(
+        'um campo de origem explicitamente nomeado "timing_method"'
+        in deterministic_correction_user
+        and "preserve e relate literalmente seu valor"
+        in deterministic_correction_user
+        and "não identifica timing"
+        in deterministic_correction_user,
+        "PROMPT DE RECONSTRUÇÃO RECONHECE TIMING_METHOD EXPLÍCITO",
+    )
+
     # ========================================================
     # RESULTADO FINAL
     # ========================================================
 
     print("=" * 70)
     print(
-        "CIO AI AGENT V1.5 — 172 TESTES OK"
+        "CIO AI AGENT V1.5 — 174 TESTES OK"
     )
     print("=" * 70)
 
