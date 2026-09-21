@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.3"
-CIO_AI_BUILD = "2.3.3-DETERMINISTIC-COMPARISON-EVIDENCE"
+CIO_AI_VERSION = "2.3.4"
+CIO_AI_BUILD = "2.3.4-CIO-CONCLUSION-SYNTHESIS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -450,8 +450,8 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.3",
-        "architecture": "PYTHON_ORCHESTRATED_DETERMINISTIC_COMPARISON_INTEGRATION",
+        "contract_version": "2.3.4",
+        "architecture": "PYTHON_ORCHESTRATED_CIO_SYNTHESIS_INTEGRATION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
@@ -583,8 +583,13 @@ def _build_section_prompt(
             "Não transforme a integração em recomendação."
         ),
         "integrated_cio_conclusion": (
-            "Responda diretamente à pergunta de conclusion_contract. Produza UMA leitura CIO integrada "
-            "considerando conjuntamente SCENARIO, RISK, MICRO_US e MICRO_BR. "
+            "Responda diretamente à pergunta de conclusion_contract em nível de síntese executiva. "
+            "Use a integração entre camadas já produzida para identificar a característica dominante "
+            "do cenário conjunto formado por SCENARIO, RISK, MICRO_US e MICRO_BR. "
+            "NÃO reenumere robôs, tickers, rankings, scores, pesos ou listas de sinais, salvo se um dado "
+            "for indispensável para sustentar a característica dominante. "
+            "Explique o que o conjunto significa, preservando tensões, heterogeneidade e seletividade "
+            "quando sustentadas. Não force consenso e não crie recomendação. "
             "A conclusão deve ser descritiva, não prescritiva."
         ),
         "governance": (
@@ -598,7 +603,7 @@ def _build_section_prompt(
         "micro_us": 140,
         "micro_br": 140,
         "cross_layer_integration": 180,
-        "integrated_cio_conclusion": 180,
+        "integrated_cio_conclusion": 110,
         "governance": 80,
     }
 
@@ -608,6 +613,15 @@ def _build_section_prompt(
         prior_block = (
             "\n\nSÍNTESES ANTERIORES PARA COERÊNCIA\n"
             + _compact_json(prior_sections)
+        )
+
+    conclusion_rules = ""
+    if field == "integrated_cio_conclusion":
+        conclusion_rules = (
+            "\n- Esta seção é uma SÍNTESE de nível superior, não uma repetição da seção de integração."
+            "\n- Priorize a característica dominante do conjunto e as tensões que qualificam essa leitura."
+            "\n- Não faça inventário de tickers, sinais ou resultados individuais já descritos nas seções anteriores."
+            "\n- Não transforme ausência de convergência micro em conclusão de ausência de cenário."
         )
 
     return f"""
@@ -629,7 +643,7 @@ REGRAS
 - Não transforme risco em ordem de reduzir exposição.
 - Não transforme oportunidade em autorização para operar.
 - Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação.
-- Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.
+- Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.{conclusion_rules}
 - Máximo de {limits[field]} palavras.
 """.strip()
 
@@ -822,7 +836,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.3:
+    V2.3.4:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) integração e conclusão recebem conjuntamente as quatro camadas;
@@ -889,7 +903,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "PYTHON_ORCHESTRATED_DETERMINISTIC_COMPARISON_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_CIO_SYNTHESIS_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
