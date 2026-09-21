@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.1"
-CIO_AI_BUILD = "2.3.1-FINAL-ANSWER-CHANNEL-SECTIONS"
+CIO_AI_VERSION = "2.3.2"
+CIO_AI_BUILD = "2.3.2-NEMOTRON-NATIVE-NONTHINKING"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -366,8 +366,8 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.1",
-        "architecture": "PYTHON_ORCHESTRATED_FINAL_ANSWER_INTEGRATION",
+        "contract_version": "2.3.2",
+        "architecture": "PYTHON_ORCHESTRATED_NEMOTRON_NONTHINKING_INTEGRATION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
@@ -565,15 +565,6 @@ def _clean_section_text(text: str, field: str) -> str:
             f"Formato inválido na etapa {field}: era esperado texto analítico final."
         )
 
-    meta_prefixes = (
-        "we need", "i need", "i should", "let me", "the task", "the user",
-        "preciso", "devo", "vou ", "a tarefa", "o usuário", "analisando",
-    )
-    if lowered.startswith(meta_prefixes):
-        raise CIOAIResponseError(
-            f"Resposta metadiscursiva na etapa {field}; era esperado somente texto final."
-        )
-
     # Sinal técnico simples de truncamento: a resposta final deve terminar como prosa completa.
     if cleaned[-1] not in ".!?)]}":
         raise CIOAIResponseError(
@@ -680,9 +671,14 @@ def _request_nvidia_analysis(
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.10,
-                top_p=0.9,
+                temperature=1.0,
+                top_p=0.95,
                 max_tokens=max_tokens,
+                extra_body={
+                    "chat_template_kwargs": {
+                        "enable_thinking": False
+                    }
+                },
             )
             return _extract_response_text(completion)
         except Exception as exc:
@@ -732,7 +728,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.1:
+    V2.3.2:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) integração e conclusão recebem conjuntamente as quatro camadas;
@@ -799,7 +795,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "PYTHON_ORCHESTRATED_FINAL_ANSWER_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_NEMOTRON_NONTHINKING_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
