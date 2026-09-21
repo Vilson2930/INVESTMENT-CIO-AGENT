@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.0"
-CIO_AI_BUILD = "2.0-FUNCTIONAL-INTEGRATION"
+CIO_AI_BUILD = "2.0.1-STRUCTURAL-RECONSTRUCTION"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -413,6 +413,61 @@ def validate_report_structure(report: str) -> Dict[str, Any]:
     }
 
 
+def _build_structural_reconstruction_prompt(
+    context: Dict[str, Any],
+    structural_error: Exception,
+) -> str:
+    """
+    Pede uma única reconstrução integral quando a resposta da NVIDIA
+    viola somente o contrato estrutural do relatório.
+
+    A resposta rejeitada NÃO é reenviada. A reconstrução usa novamente
+    o contexto funcional original para evitar contaminação textual.
+    """
+    context_json = json.dumps(
+        context,
+        ensure_ascii=False,
+        indent=2,
+        default=str,
+    )
+    sections = "\n".join(REPORT_SECTIONS)
+
+    return f"""
+A resposta anterior foi rejeitada exclusivamente por falha estrutural.
+
+FALHA ESTRUTURAL DETECTADA
+{type(structural_error).__name__}: {structural_error}
+
+RECONSTRUA O RELATÓRIO INTEGRALMENTE DO ZERO.
+
+Use exclusivamente o CONTEXTO FUNCIONAL ORIGINAL abaixo.
+Não tente completar, editar ou continuar a resposta rejeitada.
+A resposta rejeitada não é fornecida.
+
+CONTEXTO FUNCIONAL ORIGINAL
+===========================
+{context_json}
+
+CONTRATO ESTRUTURAL OBRIGATÓRIO
+===============================
+Use EXATAMENTE estas sete seções, nesta ordem, sem omitir nenhuma:
+
+{sections}
+
+REGRAS DA RECONSTRUÇÃO
+======================
+- Todas as sete seções devem conter conteúdo.
+- A seção 6 deve responder diretamente à pergunta central da integração.
+- A seção 7 deve existir e apresentar somente governança e rastreabilidade.
+- Governança não deve ser usada para fabricar a conclusão da seção 6.
+- Preserve integralmente sinais, tickers, scores, rankings, indicadores e status de origem.
+- Não crie novo sinal, novo score, recomendação de investimento ou causalidade não fornecida.
+- Não trate os sete sistemas como votos equivalentes.
+- Não explique o processo de correção.
+- Entregue somente o novo relatório final completo.
+""".strip()
+
+
 def _is_transient_503(exc: Exception) -> bool:
     text = str(exc).lower()
     return "503" in text or "service unavailable" in text or "temporarily unavailable" in text
@@ -459,7 +514,38 @@ def run_cio_ai(
     prompt = build_ai_prompt(context)
     client = _build_nvidia_client(api_key=api_key)
     report = _request_nvidia_analysis(client, prompt, selected_model)
-    structural_validation = validate_report_structure(report)
+
+    structural_retry_used = False
+    structural_retry_count = 0
+    first_structural_rejection = None
+
+    try:
+        structural_validation = validate_report_structure(report)
+    except CIOAIStructuralValidationError as exc:
+        # Uma única reconstrução estrutural controlada.
+        # Não reenviamos o texto rejeitado; usamos novamente os fatos originais.
+        structural_retry_used = True
+        structural_retry_count = 1
+        first_structural_rejection = str(exc)
+
+        reconstruction_prompt = _build_structural_reconstruction_prompt(
+            context=context,
+            structural_error=exc,
+        )
+        report = _request_nvidia_analysis(
+            client,
+            reconstruction_prompt,
+            selected_model,
+        )
+        structural_validation = validate_report_structure(report)
+
+    structural_validation = {
+        **structural_validation,
+        "retry_used": structural_retry_used,
+        "retry_count": structural_retry_count,
+        "max_structural_retries": 1,
+        "first_rejection": first_structural_rejection,
+    }
 
     return {
         "status": "OK",
@@ -501,6 +587,7 @@ __all__ = [
     "build_functional_context",
     "build_ai_prompt",
     "validate_report_structure",
+    "_build_structural_reconstruction_prompt",
     "run_cio_ai",
     "analyze_cio_context",
 ]
