@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.2"
-CIO_AI_BUILD = "2.2-STRUCTURED-INTEGRATION-OUTPUT"
+CIO_AI_VERSION = "2.2.1"
+CIO_AI_BUILD = "2.2.1-COMPACT-STRUCTURED-INTEGRATION"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -280,7 +280,7 @@ REGRAS INVIOLÁVEIS
 - Não crie plano de ação.
 - Não use governança para determinar a conclusão de cenário.
 - Não acrescente relações que não estejam no contrato.
-- Toda afirmação factual específica deve ser recuperável literalmente do payload/evidence_manifest de um dos sete sistemas.
+- Toda afirmação factual específica deve ser recuperável literalmente do payload de um dos sete sistemas.
 - Ao citar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo correspondente antes de redigir.
 - Não faça autocorreções especulativas no texto; se um fato não puder ser sustentado pelo contrato, omita-o.
 """.strip()
@@ -366,15 +366,14 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.1",
-        "architecture": "CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "contract_version": "2.2.1",
+        "architecture": "COMPACT_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
             "MICRO_US": micro_us,
             "MICRO_BR": micro_br,
         },
-        "evidence_manifest": build_evidence_manifest(raw_input),
         "authorized_relations": authorized_relations,
         "conclusion_contract": {
             "question": (
@@ -453,7 +452,7 @@ REGRAS
 - Os sete sistemas não são votos equivalentes.
 - Preserve os papéis SCENARIO, RISK, MICRO_US e MICRO_BR.
 - Não acrescente fatos ausentes.
-- Toda afirmação factual específica deve ser sustentada pelo payload/evidence_manifest.
+- Toda afirmação factual específica deve ser sustentada pelo payload correspondente.
 - Antes de mencionar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo de origem.
 - Não misture opportunities/ranking com positions/carteira.
 - Não acrescente relações além de authorized_relations.
@@ -462,7 +461,13 @@ REGRAS
 - integrated_cio_conclusion é descritiva, não prescritiva.
 - Não crie recomendação, plano de ação, compra, venda, rebalanceamento ou autorização operacional.
 - governance deve permanecer separada da conclusão analítica.
-- Cada valor deve ser uma string não vazia e concisa.
+- Cada valor deve ser uma string não vazia.
+- scenario, risk, micro_us e micro_br: no máximo 90 palavras cada.
+- cross_layer_integration: no máximo 120 palavras.
+- integrated_cio_conclusion: no máximo 120 palavras.
+- governance: no máximo 60 palavras.
+- O conjunto dos sete valores deve ficar preferencialmente abaixo de 650 palavras.
+- Priorize síntese integrada; não liste todos os detalhes disponíveis.
 - Não exponha raciocínio interno, planejamento da resposta ou autocorreções.
 """.strip()
 
@@ -594,7 +599,8 @@ A tentativa anterior não respeitou o contrato técnico de saída:
 {type(first_error).__name__}: {first_error}
 
 Gere novamente SOMENTE o objeto JSON válido com as sete chaves exigidas.
-Não explique o erro e não produza Markdown.
+Use no máximo 70 palavras em cada campo e no máximo 450 palavras no total.
+Não explique o erro, não produza Markdown e não exponha raciocínio intermediário.
 """.strip()
 
 
@@ -624,94 +630,6 @@ def _extract_response_text(completion: Any) -> str:
     return content.strip()
 
 
-def validate_report_structure(report: str) -> Dict[str, Any]:
-    """
-    Valida a estrutura sem depender da redação literal do título.
-
-    O contrato estrutural é a presença das seções numeradas 1..7, em ordem,
-    com conteúdo entre elas. A IA pode usar Markdown (#, ##, **), espaços ou
-    pequena variação tipográfica no título sem transformar isso em falha.
-    """
-    if not isinstance(report, str) or not report.strip():
-        raise CIOAIStructuralValidationError("Relatório CIO vazio.")
-
-    import re
-
-    matches = list(
-        re.finditer(
-            r"(?mi)^\s*(?:#{1,6}\s*)?(?:\*{1,2})?"
-            r"([1-7])\s*[.\-):]\s*[^\n]+"
-            r"(?:\*{1,2})?\s*$",
-            report,
-        )
-    )
-
-    found = []
-    positions = {}
-    for match in matches:
-        number = int(match.group(1))
-        if number not in positions:
-            found.append(number)
-            positions[number] = (match.start(), match.end())
-
-    expected = list(range(1, 8))
-    if found != expected:
-        raise CIOAIStructuralValidationError(
-            f"Estrutura incompleta. Seções numeradas encontradas: {found}; "
-            f"esperadas: {expected}"
-        )
-
-    for number in expected:
-        body_start = positions[number][1]
-        body_end = positions[number + 1][0] if number < 7 else len(report)
-        if not report[body_start:body_end].strip():
-            raise CIOAIStructuralValidationError(
-                f"Seção {number} está vazia."
-            )
-
-    return {
-        "status": "PASS",
-        "sections_found": 7,
-        "integrated_conclusion_present": True,
-        "validation_mode": "NUMBERED_SECTION_CONTRACT",
-    }
-
-
-def _build_structural_reconstruction_prompt(
-    contract: Dict[str, Any],
-    structural_error: Exception,
-) -> str:
-    """
-    Única recuperação permitida: reconstrução por erro de FORMATO.
-    Não cria regras semânticas por palavra/frase.
-    """
-    contract_json = json.dumps(contract, ensure_ascii=False, indent=2, default=str)
-    sections = "\n".join(REPORT_SECTIONS)
-
-    return f"""
-A resposta anterior falhou somente no CONTRATO DE FORMATO:
-{type(structural_error).__name__}: {structural_error}
-
-Reconstrua o relatório do zero usando exclusivamente o mesmo contrato:
-
-{contract_json}
-
-Produza exatamente sete seções numeradas de 1 a 7, nesta ordem, todas com conteúdo.
-Use estes títulos como referência:
-{sections}
-
-O requisito estrutural obrigatório é a numeração 1..7 em ordem.
-Cada seção deve ter no máximo 180 palavras; a seção 6 no máximo 220 e a seção 7 no máximo 120.
-O relatório completo deve ter no máximo 1.300 palavras.
-Reserve espaço para todas as sete seções.
-Não explique a correção.
-Não crie recomendação, plano de ação, novo sinal, novo score ou causalidade.
-Antes de citar ticker, contagem, status, decisão, ranking, score ou peso, confira o evidence_manifest/payload.
-Não misture opportunities/ranking com positions/carteira e não faça autocorreções especulativas.
-Entregue somente o relatório completo.
-""".strip()
-
-
 def _is_transient_503(exc: Exception) -> bool:
     text = str(exc).lower()
     return (
@@ -739,7 +657,7 @@ def _request_nvidia_analysis(
                 ],
                 temperature=0.10,
                 top_p=0.9,
-                max_tokens=5000,
+                max_tokens=3000,
             )
             return _extract_response_text(completion)
         except Exception as exc:
@@ -757,7 +675,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.2:
+    V2.2.1:
     1) Python preserva e organiza os sete sistemas em contrato;
     2) NVIDIA devolve sete campos analíticos estruturados;
     3) Python valida os campos e monta deterministicamente o relatório;
@@ -811,7 +729,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "STRUCTURED_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "architecture": "COMPACT_STRUCTURED_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
