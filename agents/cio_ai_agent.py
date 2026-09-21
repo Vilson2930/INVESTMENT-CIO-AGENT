@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1.2-CONTRACT-FIRST-ROBUST-STRUCTURE"
+CIO_AI_BUILD = "2.1.3-BOUNDED-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -424,6 +424,11 @@ REGRAS DE SAÍDA
 - Não diga o que o investidor deve fazer.
 - Não crie recomendação, plano de ação ou autorização operacional.
 - A seção 7 apenas relata governance.
+- Seja conciso: cada seção deve ter no máximo 180 palavras.
+- A seção 6 deve ter no máximo 220 palavras.
+- A seção 7 deve ter no máximo 120 palavras.
+- O relatório completo deve ter no máximo 1.300 palavras.
+- Reserve obrigatoriamente espaço para as sete seções; não aprofunde uma seção às custas das seguintes.
 - Entregue somente o relatório final.
 """.strip()
 
@@ -531,6 +536,9 @@ Use estes títulos como referência:
 {sections}
 
 O requisito estrutural obrigatório é a numeração 1..7 em ordem.
+Cada seção deve ter no máximo 180 palavras; a seção 6 no máximo 220 e a seção 7 no máximo 120.
+O relatório completo deve ter no máximo 1.300 palavras.
+Reserve espaço para todas as sete seções.
 Não explique a correção.
 Não crie recomendação, plano de ação, novo sinal, novo score ou causalidade.
 Entregue somente o relatório completo.
