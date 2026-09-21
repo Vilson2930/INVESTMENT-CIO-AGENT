@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.0"
-CIO_AI_BUILD = "2.4.0-DETERMINISTIC-FACTS-AI-SYNTHESIS"
+CIO_AI_VERSION = "2.4.1"
+CIO_AI_BUILD = "2.4.1-DETERMINISTIC-FACTS-AI-SYNTHESIS-GUARDED"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -281,6 +281,11 @@ REGRAS INVIOLÁVEIS
 - Não formule aconselhamento, orientação, recomendação de monitoramento ou linguagem normativa; descreva apenas o estado observado.
 - Não use governança para determinar a conclusão de cenário.
 - Não acrescente relações que não estejam no contrato.
+- Relações factuais computáveis — contagens, ticker/sinal, interseções, sobreposições,
+  presença/ausência de ticker e convergência/divergência literal — pertencem ao Python.
+- Você pode interpretar o SIGNIFICADO dessas relações, inclusive o significado analítico
+  de sobreposição entre especialistas, mas não deve recontá-las, recalculá-las,
+  negá-las ou formular uma nova versão factual delas.
 - Toda afirmação factual específica deve ser recuperável literalmente do payload de um dos sete sistemas.
 - Ao citar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo correspondente antes de redigir.
 - Alinhamento/convergência entre sistemas exige o mesmo ticker e o mesmo signal literal no comparison_evidence; sinais diferentes nunca são alinhamento.
@@ -464,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.0",
+        "contract_version": "2.4.1",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -679,7 +684,11 @@ def _build_section_prompt(
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
             "Interprete somente o padrão agregado. NÃO escreva pares ticker/signal, NÃO conte, "
             "NÃO intersecte conjuntos e NÃO reconstrua listas ou relações factuais. "
-            "Esses fatos pertencem exclusivamente à camada determinística do Python."
+            "NÃO afirme presença, ausência ou quantidade de sobreposição entre sistemas; "
+            "a sobreposição factual será apresentada pelo Python. "
+            "Você pode interpretar apenas o significado analítico de leituras distintas ou coincidentes "
+            "entre especialistas do mercado americano. Esses fatos pertencem exclusivamente "
+            "à camada determinística do Python."
         ),
         "micro_br": (
             "Produza uma leitura conjunta da camada MICRO_BR. B3 e FII são classes diferentes; "
@@ -688,7 +697,9 @@ def _build_section_prompt(
         "cross_layer_integration": (
             "Integre as quatro camadas usando SOMENTE authorized_relations e as sínteses factuais já fornecidas. "
             "NÃO calcule contagens, NÃO intersecte conjuntos, NÃO reconstrua ticker/signal e NÃO crie nova relação factual. "
-            "Explique somente o significado conjunto dos fatos já consolidados: coexistências, tensões, heterogeneidade ou seletividade. "
+            "NÃO faça afirmações próprias sobre presença/ausência ou quantidade de sobreposição de tickers. "
+            "Se a camada factual mostrar sobreposição, convergência ou divergência, interprete somente o significado disso. "
+            "Explique o significado conjunto dos fatos já consolidados: coexistências, tensões, heterogeneidade ou seletividade. "
             "Não transforme a integração em recomendação."
         ),
         "integrated_cio_conclusion": (
@@ -696,6 +707,7 @@ def _build_section_prompt(
             "Use como BASE ANALÍTICA a seção cross_layer_integration já produzida e grounded nas quatro camadas. "
             "Extraia dela a característica dominante do cenário conjunto e as tensões que qualificam essa leitura. "
             "NÃO reenumere robôs, tickers, rankings, scores, pesos, contagens ou listas de sinais. "
+            "NÃO faça afirmações próprias sobre presença/ausência ou quantidade de sobreposição de tickers. "
             "NÃO reabra os payloads individuais nem reconstrua a análise das quatro camadas. "
             "Não force consenso e não crie recomendação. A conclusão deve ser descritiva, não prescritiva."
         ),
@@ -1049,6 +1061,9 @@ def run_cio_ai(
             "set_intersections": "DETERMINISTIC_PYTHON",
             "pairwise_ticker_overlaps": "DETERMINISTIC_PYTHON",
             "llm_role": "INTERPRETATION_AND_SYNTHESIS_ONLY",
+            "llm_may_restate_computable_relations": False,
+            "overlap_interpretation_allowed": True,
+            "overlap_fact_assertion_owner": "DETERMINISTIC_PYTHON",
             "sampling_temperature": 0.0,
             "sampling_top_p": 1.0,
         },
