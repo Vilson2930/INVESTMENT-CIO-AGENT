@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.0"
-CIO_AI_BUILD = "2.0.1-STRUCTURAL-RECONSTRUCTION"
+CIO_AI_VERSION = "2.1"
+CIO_AI_BUILD = "2.1-CONTRACT-FIRST-INTEGRATION"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -258,56 +258,28 @@ def build_functional_context(raw_input: Dict[str, Any]) -> Dict[str, Any]:
 
 
 SYSTEM_PROMPT = """
-Você é o CIO Integration Engine, uma camada de inteligência que integra sete sistemas
-quantitativos especialistas.
+Você é o redator analítico do CIO Integration Engine.
 
-PRINCÍPIO CENTRAL
-Os sete sistemas NÃO são sete votos equivalentes. Cada um responde a uma pergunta
-diferente. Sua tarefa é integrar DIMENSÕES FUNCIONAIS, não buscar maioria ou consenso.
+Você NÃO decide investimentos. Você recebe um CONTRATO DE INTEGRAÇÃO já construído
+deterministicamente pelo Python a partir dos sete sistemas especialistas.
 
-CAMADAS
-1. SCENARIO — SP500_CYCLE_ATLAS: pano de fundo/regime de mercado.
-2. RISK — COPIAULTIMOROB: condição de risco da carteira.
-3. MICRO_US — Ações Americanas + AI Infrastructure + Growth: seleção e oportunidades.
-4. MICRO_BR — B3 + FII: seleção e oportunidades no mercado brasileiro, respeitando
-   que ações e FIIs são classes diferentes.
+Sua função é somente:
+1. explicar os fatos preservados;
+2. explicar as relações explicitamente autorizadas pelo contrato;
+3. redigir uma leitura integrada descritiva do cenário;
+4. manter governança separada da conclusão analítica.
 
-MÉTODO OBRIGATÓRIO
-A) Leia primeiro SCENARIO.
-B) Relacione SCENARIO com RISK sem afirmar que um causou o outro.
-C) Analise MICRO_US e procure comparação direta somente quando existir dimensão comum
-   comprovável, especialmente o mesmo ticker.
-D) Analise MICRO_BR como contexto regional; não trate ações e FIIs como sinais equivalentes.
-E) Relacione SCENARIO/RISK com MICRO_US/MICRO_BR por coexistência e contexto.
-F) Produza uma inferência CIO sobre o PADRÃO CONJUNTO que emerge dessas camadas.
-G) Somente depois apresente governança, separada da conclusão de cenário.
-
-PERMITIDO
-- inferir o significado conjunto de fatos preservados;
-- caracterizar alinhamento, tensão, heterogeneidade, seletividade ou coexistência quando
-  essas características decorrerem dos fatos apresentados;
-- explicar que camadas diferentes apresentam leituras diferentes;
-- comparar o mesmo ticker quando ele estiver explicitamente presente nos sistemas comparados.
-
-PROIBIDO
-- alterar sinal, ticker, score, ranking, indicador ou status de origem;
-- recalcular indicadores;
-- contar sistemas positivos/negativos como votação;
-- transformar seleção micro em voto macro;
-- transformar risco em ordem de reduzir exposição;
-- transformar oportunidade em autorização para operar;
-- inventar causa de um sinal;
-- transformar coexistência em causalidade;
-- afirmar que Kill Switch, Hard Block ou restrições causaram bloqueio operacional sem
-  relação causal explicitamente fornecida;
-- criar recomendação própria de compra, venda, entrada, saída ou rebalanceamento;
-- criar novo score ou novo sinal CIO.
-
-A CONCLUSÃO CIO deve responder:
-"Considerando conjuntamente as quatro camadas funcionais formadas pelos sete sistemas,
-qual é a leitura integrada do cenário de investimento?"
-
-A conclusão deve ser uma interpretação do conjunto, e não uma enumeração dos sete robôs.
+REGRAS INVIOLÁVEIS
+- Não altere fatos de origem.
+- Não crie sinal, score, ranking, ticker, indicador ou status.
+- Não transforme sete sistemas em votação.
+- Não invente causalidade.
+- Não transforme risco em ordem de reduzir exposição.
+- Não transforme oportunidade em autorização para operar.
+- Não crie compra, venda, entrada, saída, espera, rebalanceamento, aumento ou redução de exposição.
+- Não crie plano de ação.
+- Não use governança para determinar a conclusão de cenário.
+- Não acrescente relações que não estejam no contrato.
 """.strip()
 
 
@@ -322,41 +294,138 @@ REPORT_SECTIONS = (
 )
 
 
+def _system_fact(system_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Envelope determinístico: preserva o payload e acrescenta somente metadados fixos."""
+    catalog = OFFICIAL_SYSTEMS[system_id]
+    return {
+        "system_id": system_id,
+        "system_name": catalog["name"],
+        "role": catalog["role"],
+        "region": catalog["region"],
+        "layer": catalog["layer"],
+        "payload": _clone(payload),
+    }
+
+
+def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Constrói em Python o contrato que limita o espaço de inferência da IA.
+
+    Nenhum fato quantitativo é recalculado e nenhuma conclusão operacional é criada.
+    """
+    systems = normalize_system_outputs(raw_input)
+
+    scenario = [_system_fact("sp500_cycle", systems["sp500_cycle"])]
+    risk = [_system_fact("global_portfolio", systems["global_portfolio"])]
+    micro_us = [
+        _system_fact("us_equities", systems["us_equities"]),
+        _system_fact("ai_infrastructure", systems["ai_infrastructure"]),
+        _system_fact("growth", systems["growth"]),
+    ]
+    micro_br = [
+        _system_fact("b3_equities", systems["b3_equities"]),
+        _system_fact("fii", systems["fii"]),
+    ]
+
+    authorized_relations = []
+    for relation_id, relation in RELATION_MAP.items():
+        authorized_relations.append({
+            "relation_id": relation_id,
+            "systems": list(relation["systems"]),
+            "type": relation["type"],
+            "question": relation["question"],
+            "causality_allowed": bool(relation["causality_allowed"]),
+        })
+
+    return {
+        "contract_version": "2.1",
+        "architecture": "CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "layers": {
+            "SCENARIO": scenario,
+            "RISK": risk,
+            "MICRO_US": micro_us,
+            "MICRO_BR": micro_br,
+        },
+        "authorized_relations": authorized_relations,
+        "conclusion_contract": {
+            "question": (
+                "Considerando conjuntamente as quatro camadas funcionais formadas "
+                "pelos sete sistemas, qual é a leitura integrada do cenário de investimento?"
+            ),
+            "allowed": [
+                "descrever o padrão conjunto sustentado pelos fatos",
+                "descrever coexistência, tensão, heterogeneidade ou seletividade quando sustentadas",
+                "comparar diretamente somente dimensões realmente comuns",
+            ],
+            "forbidden": [
+                "criar recomendação",
+                "criar plano de ação",
+                "criar novo sinal",
+                "criar novo score",
+                "inventar causalidade",
+                "transformar risco em ordem operacional",
+                "transformar oportunidade em autorização para operar",
+            ],
+        },
+        "governance": _clone(_safe_dict(raw_input.get("governance"))),
+        "source_data": _clone(systems),
+    }
+
+
 def build_ai_prompt(context: Dict[str, Any]) -> str:
+    """
+    Compatibilidade pública: recebe o contexto funcional e o transforma no prompt.
+    Para a execução V2.1, run_cio_ai usa diretamente build_integration_contract().
+    """
     context_json = json.dumps(context, ensure_ascii=False, indent=2, default=str)
     sections = "\n".join(REPORT_SECTIONS)
     return f"""
-Analise exclusivamente o contexto funcional abaixo.
+Redija o relatório a partir do contrato abaixo.
 
-=========================
-CONTEXTO FUNCIONAL
-=========================
+CONTRATO
+========
 {context_json}
 
-=========================
+FORMATO OBRIGATÓRIO
+===================
+{sections}
+
+A seção 5 deve explicar somente relações autorizadas pelo contrato.
+A seção 6 deve responder à pergunta central de forma DESCRITIVA, não prescritiva.
+A seção 7 deve apenas registrar governança e rastreabilidade.
+
+Não produza recomendações nem plano de ação.
+Entregue somente o relatório final.
+""".strip()
+
+
+def _build_contract_prompt(contract: Dict[str, Any]) -> str:
+    contract_json = json.dumps(contract, ensure_ascii=False, indent=2, default=str)
+    sections = "\n".join(REPORT_SECTIONS)
+    return f"""
+CONTRATO DE INTEGRAÇÃO CIO
+==========================
+{contract_json}
+
 TAREFA
-=========================
-
-Produza UM relatório CIO integrado.
-
-Não resuma os sete robôs em sequência. Trabalhe por CAMADAS e use o relation_map para
-saber quais relações são estruturalmente válidas.
-
-Na seção 5, explique o padrão que emerge da combinação entre regime, risco e evidências
-micro. Diferencie relação estrutural, contexto, coexistência e convergência comprovada.
-
-Na seção 6, responda diretamente à pergunta central:
-"Considerando conjuntamente as quatro camadas funcionais formadas pelos sete sistemas,
-qual é a leitura integrada do cenário de investimento?"
-
-A seção 6 deve conter uma conclusão analítica real, mas não pode criar recomendação,
-novo sinal, novo score ou causalidade não fornecida.
-
-A governança deve aparecer somente na seção 7. Não use governança para fabricar a
-conclusão de cenário.
+======
+Transforme exclusivamente este contrato em um relatório analítico legível.
 
 Use exatamente estas seções e nesta ordem:
 {sections}
+
+REGRAS DE SAÍDA
+===============
+- Não faça uma votação entre sistemas.
+- Não acrescente fatos ausentes.
+- Não acrescente relações além de authorized_relations.
+- A seção 5 descreve o padrão conjunto observado.
+- A seção 6 responde à conclusion_contract.question.
+- A seção 6 é uma LEITURA DO CENÁRIO, não uma decisão de investimento.
+- Não diga o que o investidor deve fazer.
+- Não crie recomendação, plano de ação ou autorização operacional.
+- A seção 7 apenas relata governance.
+- Entregue somente o relatório final.
 """.strip()
 
 
@@ -394,17 +463,23 @@ def validate_report_structure(report: str) -> Dict[str, Any]:
     for section in REPORT_SECTIONS:
         pos = report.find(section)
         if pos < 0:
-            raise CIOAIStructuralValidationError(f"Seção obrigatória ausente: {section}")
+            raise CIOAIStructuralValidationError(
+                f"Seção obrigatória ausente: {section}"
+            )
         positions.append(pos)
 
     if positions != sorted(positions):
-        raise CIOAIStructuralValidationError("As seções do relatório estão fora da ordem exigida.")
+        raise CIOAIStructuralValidationError(
+            "As seções do relatório estão fora da ordem exigida."
+        )
 
-    conclusion_start = positions[5] + len(REPORT_SECTIONS[5])
-    conclusion_end = positions[6]
-    conclusion = report[conclusion_start:conclusion_end].strip()
-    if not conclusion:
-        raise CIOAIStructuralValidationError("CONCLUSÃO CIO INTEGRADA vazia.")
+    for index, section in enumerate(REPORT_SECTIONS):
+        start = positions[index] + len(section)
+        end = positions[index + 1] if index + 1 < len(positions) else len(report)
+        if not report[start:end].strip():
+            raise CIOAIStructuralValidationError(
+                f"Seção obrigatória vazia: {section}"
+            )
 
     return {
         "status": "PASS",
@@ -414,63 +489,40 @@ def validate_report_structure(report: str) -> Dict[str, Any]:
 
 
 def _build_structural_reconstruction_prompt(
-    context: Dict[str, Any],
+    contract: Dict[str, Any],
     structural_error: Exception,
 ) -> str:
     """
-    Pede uma única reconstrução integral quando a resposta da NVIDIA
-    viola somente o contrato estrutural do relatório.
-
-    A resposta rejeitada NÃO é reenviada. A reconstrução usa novamente
-    o contexto funcional original para evitar contaminação textual.
+    Única recuperação permitida: reconstrução por erro de FORMATO.
+    Não cria regras semânticas por palavra/frase.
     """
-    context_json = json.dumps(
-        context,
-        ensure_ascii=False,
-        indent=2,
-        default=str,
-    )
+    contract_json = json.dumps(contract, ensure_ascii=False, indent=2, default=str)
     sections = "\n".join(REPORT_SECTIONS)
 
     return f"""
-A resposta anterior foi rejeitada exclusivamente por falha estrutural.
-
-FALHA ESTRUTURAL DETECTADA
+A resposta anterior falhou somente no CONTRATO DE FORMATO:
 {type(structural_error).__name__}: {structural_error}
 
-RECONSTRUA O RELATÓRIO INTEGRALMENTE DO ZERO.
+Reconstrua o relatório do zero usando exclusivamente o mesmo contrato:
 
-Use exclusivamente o CONTEXTO FUNCIONAL ORIGINAL abaixo.
-Não tente completar, editar ou continuar a resposta rejeitada.
-A resposta rejeitada não é fornecida.
+{contract_json}
 
-CONTEXTO FUNCIONAL ORIGINAL
-===========================
-{context_json}
-
-CONTRATO ESTRUTURAL OBRIGATÓRIO
-===============================
-Use EXATAMENTE estas sete seções, nesta ordem, sem omitir nenhuma:
-
+Use exatamente estas sete seções, nesta ordem, todas com conteúdo:
 {sections}
 
-REGRAS DA RECONSTRUÇÃO
-======================
-- Todas as sete seções devem conter conteúdo.
-- A seção 6 deve responder diretamente à pergunta central da integração.
-- A seção 7 deve existir e apresentar somente governança e rastreabilidade.
-- Governança não deve ser usada para fabricar a conclusão da seção 6.
-- Preserve integralmente sinais, tickers, scores, rankings, indicadores e status de origem.
-- Não crie novo sinal, novo score, recomendação de investimento ou causalidade não fornecida.
-- Não trate os sete sistemas como votos equivalentes.
-- Não explique o processo de correção.
-- Entregue somente o novo relatório final completo.
+Não explique a correção.
+Não crie recomendação, plano de ação, novo sinal, novo score ou causalidade.
+Entregue somente o relatório completo.
 """.strip()
 
 
 def _is_transient_503(exc: Exception) -> bool:
     text = str(exc).lower()
-    return "503" in text or "service unavailable" in text or "temporarily unavailable" in text
+    return (
+        "503" in text
+        or "service unavailable" in text
+        or "temporarily unavailable" in text
+    )
 
 
 def _request_nvidia_analysis(
@@ -489,7 +541,7 @@ def _request_nvidia_analysis(
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.15,
+                temperature=0.10,
                 top_p=0.9,
                 max_tokens=5000,
             )
@@ -508,33 +560,35 @@ def run_cio_ai(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Executa a nova integração funcional dos sete sistemas."""
+    """
+    V2.1:
+    1) Python preserva e organiza os sete sistemas em contrato;
+    2) NVIDIA redige a leitura do contrato;
+    3) Python valida somente o contrato estrutural do relatório.
+    """
     selected_model = model or DEFAULT_MODEL
+
+    # Mantido para rastreabilidade/compatibilidade.
     context = build_functional_context(raw_input)
-    prompt = build_ai_prompt(context)
+
+    # Esta é a fronteira principal da V2.1.
+    contract = build_integration_contract(raw_input)
+    prompt = _build_contract_prompt(contract)
     client = _build_nvidia_client(api_key=api_key)
     report = _request_nvidia_analysis(client, prompt, selected_model)
 
     structural_retry_used = False
-    structural_retry_count = 0
     first_structural_rejection = None
 
     try:
         structural_validation = validate_report_structure(report)
     except CIOAIStructuralValidationError as exc:
-        # Uma única reconstrução estrutural controlada.
-        # Não reenviamos o texto rejeitado; usamos novamente os fatos originais.
         structural_retry_used = True
-        structural_retry_count = 1
         first_structural_rejection = str(exc)
 
-        reconstruction_prompt = _build_structural_reconstruction_prompt(
-            context=context,
-            structural_error=exc,
-        )
         report = _request_nvidia_analysis(
             client,
-            reconstruction_prompt,
+            _build_structural_reconstruction_prompt(contract, exc),
             selected_model,
         )
         structural_validation = validate_report_structure(report)
@@ -542,7 +596,7 @@ def run_cio_ai(
     structural_validation = {
         **structural_validation,
         "retry_used": structural_retry_used,
-        "retry_count": structural_retry_count,
+        "retry_count": 1 if structural_retry_used else 0,
         "max_structural_retries": 1,
         "first_rejection": first_structural_rejection,
     }
@@ -551,12 +605,13 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "FUNCTIONAL_INTEGRATION",
+        "architecture": "CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
         "layers": _clone(context["layers"]),
         "relation_map": _clone(RELATION_MAP),
+        "integration_contract": contract,
         "structural_validation": structural_validation,
         "source_data_changed": False,
         "report": report,
@@ -585,9 +640,9 @@ __all__ = [
     "CIOAIStructuralValidationError",
     "normalize_system_outputs",
     "build_functional_context",
+    "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
-    "_build_structural_reconstruction_prompt",
     "run_cio_ai",
     "analyze_cio_context",
 ]
