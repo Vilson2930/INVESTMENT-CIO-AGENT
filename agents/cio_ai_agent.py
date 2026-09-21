@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.2.1"
-CIO_AI_BUILD = "2.2.1-COMPACT-STRUCTURED-INTEGRATION"
+CIO_AI_VERSION = "2.3"
+CIO_AI_BUILD = "2.3-PYTHON-ORCHESTRATED-ANALYTICAL-SECTIONS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -399,7 +399,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-STRUCTURED_OUTPUT_FIELDS = (
+ANALYTICAL_SECTION_FIELDS = (
     "scenario",
     "risk",
     "micro_us",
@@ -410,138 +410,165 @@ STRUCTURED_OUTPUT_FIELDS = (
 )
 
 
-def build_ai_prompt(context: Dict[str, Any]) -> str:
-    """
-    Compatibilidade pública.
-    Na V2.2 a saída da NVIDIA é um objeto JSON analítico estruturado.
-    """
-    return _build_structured_prompt(context)
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-def _build_structured_prompt(contract: Dict[str, Any]) -> str:
-    contract_json = json.dumps(contract, ensure_ascii=False, indent=2, default=str)
-    schema_example = {
-        "scenario": "texto factual do cenário/regime",
-        "risk": "texto factual do risco da carteira",
-        "micro_us": "texto integrado dos sistemas micro dos EUA",
-        "micro_br": "texto integrado dos sistemas micro do Brasil",
-        "cross_layer_integration": "integração entre as camadas usando apenas authorized_relations",
-        "integrated_cio_conclusion": "uma única leitura CIO integrada e descritiva",
-        "governance": "governança e rastreabilidade, separadas da conclusão",
+def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
+    """
+    Seleciona deterministicamente somente o contexto necessário para cada etapa.
+    Não resume nem recalcula fatos.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    relations = contract.get("authorized_relations", [])
+    conclusion_contract = _safe_dict(contract.get("conclusion_contract"))
+    governance = _safe_dict(contract.get("governance"))
+
+    if field == "scenario":
+        return {"SCENARIO": _clone(layers.get("SCENARIO", []))}
+    if field == "risk":
+        return {"RISK": _clone(layers.get("RISK", []))}
+    if field == "micro_us":
+        return {"MICRO_US": _clone(layers.get("MICRO_US", []))}
+    if field == "micro_br":
+        return {"MICRO_BR": _clone(layers.get("MICRO_BR", []))}
+    if field == "cross_layer_integration":
+        return {
+            "SCENARIO": _clone(layers.get("SCENARIO", [])),
+            "RISK": _clone(layers.get("RISK", [])),
+            "MICRO_US": _clone(layers.get("MICRO_US", [])),
+            "MICRO_BR": _clone(layers.get("MICRO_BR", [])),
+            "authorized_relations": _clone(relations),
+        }
+    if field == "integrated_cio_conclusion":
+        return {
+            "SCENARIO": _clone(layers.get("SCENARIO", [])),
+            "RISK": _clone(layers.get("RISK", [])),
+            "MICRO_US": _clone(layers.get("MICRO_US", [])),
+            "MICRO_BR": _clone(layers.get("MICRO_BR", [])),
+            "authorized_relations": _clone(relations),
+            "conclusion_contract": _clone(conclusion_contract),
+        }
+    if field == "governance":
+        return {"governance": _clone(governance)}
+    raise CIOAIInputError(f"Campo analítico desconhecido: {field}")
+
+
+def _build_section_prompt(
+    contract: Dict[str, Any],
+    field: str,
+    prior_sections: Optional[Dict[str, str]] = None,
+) -> str:
+    """
+    Cada chamada pede somente UMA peça textual.
+    Integração e conclusão recebem conjuntamente as quatro camadas.
+    """
+    source = _section_source(contract, field)
+    prior_sections = prior_sections or {}
+
+    tasks = {
+        "scenario": (
+            "Descreva o cenário e o regime representados pela camada SCENARIO. "
+            "Preserve literalmente os fatos relevantes e não faça recomendação."
+        ),
+        "risk": (
+            "Descreva a condição de risco da carteira representada pela camada RISK. "
+            "Risco não é ordem operacional."
+        ),
+        "micro_us": (
+            "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
+            "Compare diretamente apenas dimensões realmente comuns."
+        ),
+        "micro_br": (
+            "Produza uma leitura conjunta da camada MICRO_BR. B3 e FII são classes diferentes; "
+            "trate a relação como contexto regional quando não houver dimensão diretamente comparável."
+        ),
+        "cross_layer_integration": (
+            "Integre as quatro camadas usando SOMENTE authorized_relations. "
+            "Explique coexistências, tensões, heterogeneidade ou seletividade sustentadas pelos fatos. "
+            "Não transforme a integração em recomendação."
+        ),
+        "integrated_cio_conclusion": (
+            "Responda diretamente à pergunta de conclusion_contract. Produza UMA leitura CIO integrada "
+            "considerando conjuntamente SCENARIO, RISK, MICRO_US e MICRO_BR. "
+            "A conclusão deve ser descritiva, não prescritiva."
+        ),
+        "governance": (
+            "Relate somente a governança fornecida. Não use governança para modificar a conclusão analítica."
+        ),
     }
-    schema_json = json.dumps(schema_example, ensure_ascii=False, indent=2)
+
+    limits = {
+        "scenario": 120,
+        "risk": 120,
+        "micro_us": 140,
+        "micro_br": 140,
+        "cross_layer_integration": 180,
+        "integrated_cio_conclusion": 180,
+        "governance": 80,
+    }
+
+    # Resumos já produzidos servem apenas como apoio de coerência nas etapas integrativas.
+    prior_block = ""
+    if field in {"cross_layer_integration", "integrated_cio_conclusion"} and prior_sections:
+        prior_block = (
+            "\n\nSÍNTESES ANTERIORES PARA COERÊNCIA\n"
+            + _compact_json(prior_sections)
+        )
 
     return f"""
-CONTRATO DE INTEGRAÇÃO CIO
-==========================
-{contract_json}
+TAREFA ÚNICA
+============
+{tasks[field]}
 
-TAREFA
-======
-Analise conjuntamente os sete sistemas conforme suas quatro camadas funcionais e
-as relações explicitamente autorizadas no contrato.
-
-Sua resposta NÃO é um rascunho, plano, raciocínio intermediário ou Markdown.
-Retorne SOMENTE um objeto JSON válido, sem texto antes ou depois e sem bloco ```.
-
-Use EXATAMENTE estas sete chaves:
-{schema_json}
+FONTE AUTORIZADA
+================
+{_compact_json(source)}
+{prior_block}
 
 REGRAS
 ======
-- Os sete sistemas não são votos equivalentes.
-- Preserve os papéis SCENARIO, RISK, MICRO_US e MICRO_BR.
-- Não acrescente fatos ausentes.
-- Toda afirmação factual específica deve ser sustentada pelo payload correspondente.
-- Antes de mencionar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo de origem.
-- Não misture opportunities/ranking com positions/carteira.
-- Não acrescente relações além de authorized_relations.
-- cross_layer_integration deve efetivamente relacionar as camadas; não apenas resumir cada sistema isoladamente.
-- integrated_cio_conclusion deve responder diretamente à conclusion_contract.question e sintetizar as quatro camadas em UMA leitura.
-- integrated_cio_conclusion é descritiva, não prescritiva.
-- Não crie recomendação, plano de ação, compra, venda, rebalanceamento ou autorização operacional.
-- governance deve permanecer separada da conclusão analítica.
-- Cada valor deve ser uma string não vazia.
-- scenario, risk, micro_us e micro_br: no máximo 90 palavras cada.
-- cross_layer_integration: no máximo 120 palavras.
-- integrated_cio_conclusion: no máximo 120 palavras.
-- governance: no máximo 60 palavras.
-- O conjunto dos sete valores deve ficar preferencialmente abaixo de 650 palavras.
-- Priorize síntese integrada; não liste todos os detalhes disponíveis.
-- Não exponha raciocínio interno, planejamento da resposta ou autocorreções.
+- Retorne SOMENTE o texto final desta etapa, sem título, JSON, Markdown, prefácio ou raciocínio intermediário.
+- Não altere fatos de origem.
+- Não crie ticker, sinal, score, ranking, indicador ou status.
+- Não invente causalidade.
+- Não transforme risco em ordem de reduzir exposição.
+- Não transforme oportunidade em autorização para operar.
+- Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação.
+- Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.
+- Máximo de {limits[field]} palavras.
 """.strip()
 
 
-def _extract_json_object(text: str) -> Dict[str, Any]:
-    """Extrai somente o objeto JSON final; não interpreta conteúdo analítico."""
+def build_ai_prompt(context: Dict[str, Any]) -> str:
+    """
+    Compatibilidade pública.
+    Retorna o prompt da conclusão integrada, que é a pergunta central da V2.3.
+    """
+    return _build_section_prompt(context, "integrated_cio_conclusion")
+
+
+def _clean_section_text(text: str, field: str) -> str:
+    """
+    Valida somente o contrato técnico mínimo da peça textual.
+    Não tenta interpretar nem corrigir semanticamente a resposta.
+    """
     if not isinstance(text, str) or not text.strip():
-        raise CIOAIResponseError("A NVIDIA NIM retornou resposta vazia.")
+        raise CIOAIResponseError(f"Resposta vazia na etapa {field}.")
 
-    candidate = text.strip()
+    cleaned = text.strip()
 
-    # Tolerância apenas de transporte: remove cerca Markdown se o provedor a inserir.
-    if candidate.startswith("```"):
-        lines = candidate.splitlines()
-        if lines and lines[0].lstrip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        candidate = "\n".join(lines).strip()
-        if candidate.lower().startswith("json"):
-            candidate = candidate[4:].lstrip()
-
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError as exc:
+    # Não aceitamos serialização/rascunho como peça final.
+    lowered = cleaned.lstrip().lower()
+    if lowered.startswith("```") or lowered.startswith("{") or lowered.startswith("["):
         raise CIOAIResponseError(
-            f"Saída estruturada inválida: JSON não pôde ser interpretado ({exc})."
-        ) from exc
-
-    if not isinstance(parsed, dict):
-        raise CIOAIResponseError("Saída estruturada inválida: a raiz deve ser um objeto JSON.")
-
-    return parsed
-
-
-def validate_structured_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Valida contrato de saída sem julgar palavras, tickers ou conclusões."""
-    if not isinstance(analysis, dict):
-        raise CIOAIResponseError("Análise estruturada deve ser um dicionário.")
-
-    expected = list(STRUCTURED_OUTPUT_FIELDS)
-    missing = [field for field in expected if field not in analysis]
-    extra = [field for field in analysis if field not in STRUCTURED_OUTPUT_FIELDS]
-
-    if missing:
-        raise CIOAIResponseError(
-            "Saída estruturada incompleta. Campos ausentes: " + ", ".join(missing)
-        )
-    if extra:
-        raise CIOAIResponseError(
-            "Saída estruturada contém campos não autorizados: " + ", ".join(extra)
+            f"Formato inválido na etapa {field}: era esperado texto analítico final."
         )
 
-    empty = [
-        field for field in expected
-        if not isinstance(analysis.get(field), str) or not analysis[field].strip()
-    ]
-    if empty:
-        raise CIOAIResponseError(
-            "Saída estruturada contém campos vazios/inválidos: " + ", ".join(empty)
-        )
-
-    return {
-        "status": "PASS",
-        "fields_found": len(expected),
-        "integrated_conclusion_present": bool(
-            analysis["integrated_cio_conclusion"].strip()
-        ),
-        "validation_mode": "STRUCTURED_OUTPUT_CONTRACT",
-    }
+    return cleaned
 
 
 def _render_report(analysis: Dict[str, str]) -> str:
-    """Python monta deterministicamente o relatório; a IA fornece apenas o conteúdo."""
     mapping = (
         ("1. CENÁRIO E REGIME", "scenario"),
         ("2. RISCO DA CARTEIRA", "risk"),
@@ -558,10 +585,7 @@ def _render_report(analysis: Dict[str, str]) -> str:
 
 
 def validate_report_structure(report: str) -> Dict[str, Any]:
-    """
-    Compatibilidade: na V2.2 o relatório é renderizado deterministicamente pelo Python.
-    A validação verifica apenas que os sete títulos produzidos pelo próprio renderer existem.
-    """
+    """O Python controla os sete títulos; a NVIDIA fornece apenas o conteúdo."""
     if not isinstance(report, str) or not report.strip():
         raise CIOAIStructuralValidationError("Relatório CIO vazio.")
 
@@ -579,29 +603,8 @@ def validate_report_structure(report: str) -> Dict[str, Any]:
         "status": "PASS",
         "sections_found": 7,
         "integrated_conclusion_present": True,
-        "validation_mode": "PYTHON_RENDERED_REPORT",
+        "validation_mode": "PYTHON_ORCHESTRATED_SECTIONS",
     }
-
-
-def _build_structured_retry_prompt(
-    contract: Dict[str, Any],
-    first_error: Exception,
-) -> str:
-    """
-    Uma única recuperação de CONTRATO DE SAÍDA.
-    Não adiciona regras semânticas específicas nem altera os fatos.
-    """
-    base = _build_structured_prompt(contract)
-    return f"""
-{base}
-
-A tentativa anterior não respeitou o contrato técnico de saída:
-{type(first_error).__name__}: {first_error}
-
-Gere novamente SOMENTE o objeto JSON válido com as sete chaves exigidas.
-Use no máximo 70 palavras em cada campo e no máximo 450 palavras no total.
-Não explique o erro, não produza Markdown e não exponha raciocínio intermediário.
-""".strip()
 
 
 def _build_nvidia_client(api_key: Optional[str] = None):
@@ -675,69 +678,86 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.2.1:
-    1) Python preserva e organiza os sete sistemas em contrato;
-    2) NVIDIA devolve sete campos analíticos estruturados;
-    3) Python valida os campos e monta deterministicamente o relatório;
-    4) ausência de conclusão integrada é erro, não WARN.
+    V2.3:
+    1) Python preserva os sete sistemas e as quatro camadas;
+    2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
+    3) integração e conclusão recebem conjuntamente as quatro camadas;
+    4) Python monta deterministicamente um único relatório CIO.
     """
     selected_model = model or DEFAULT_MODEL
-
     context = build_functional_context(raw_input)
     contract = build_integration_contract(raw_input)
-    prompt = _build_structured_prompt(contract)
     client = _build_nvidia_client(api_key=api_key)
 
-    raw_response = _request_nvidia_analysis(client, prompt, selected_model)
+    analysis: Dict[str, str] = {}
+    call_trace = []
 
-    retry_used = False
-    first_rejection = None
+    # Primeiro: leituras funcionais locais.
+    for field in ("scenario", "risk", "micro_us", "micro_br"):
+        prompt = _build_section_prompt(contract, field)
+        raw_text = _request_nvidia_analysis(client, prompt, selected_model)
+        analysis[field] = _clean_section_text(raw_text, field)
+        call_trace.append({"field": field, "status": "PASS"})
 
-    try:
-        structured_analysis = _extract_json_object(raw_response)
-        structured_validation = validate_structured_analysis(structured_analysis)
-    except CIOAIResponseError as exc:
-        retry_used = True
-        first_rejection = str(exc)
-
-        retry_response = _request_nvidia_analysis(
-            client,
-            _build_structured_retry_prompt(contract, exc),
-            selected_model,
-        )
-        structured_analysis = _extract_json_object(retry_response)
-        structured_validation = validate_structured_analysis(structured_analysis)
-
-    # A conclusão integrada é parte obrigatória do contrato.
-    if not structured_validation.get("integrated_conclusion_present"):
-        raise CIOAIResponseError(
-            "Saída inválida: integrated_cio_conclusion ausente ou vazia."
-        )
-
-    report = _render_report(structured_analysis)
-    structural_validation = validate_report_structure(report)
-
-    structured_validation = {
-        **structured_validation,
-        "retry_used": retry_used,
-        "retry_count": 1 if retry_used else 0,
-        "max_output_contract_retries": 1,
-        "first_rejection": first_rejection,
+    # Depois: integração real das quatro camadas, apoiada pelas sínteses anteriores,
+    # mas sempre com os payloads completos e authorized_relations disponíveis.
+    integration_prior = {
+        key: analysis[key]
+        for key in ("scenario", "risk", "micro_us", "micro_br")
     }
+    prompt = _build_section_prompt(
+        contract,
+        "cross_layer_integration",
+        prior_sections=integration_prior,
+    )
+    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
+    analysis["cross_layer_integration"] = _clean_section_text(
+        raw_text, "cross_layer_integration"
+    )
+    call_trace.append({"field": "cross_layer_integration", "status": "PASS"})
+
+    # A conclusão é uma chamada própria e recebe as quatro camadas completas,
+    # relações autorizadas e as sínteses já produzidas. Não é votação nem soma de sinais.
+    conclusion_prior = {
+        **integration_prior,
+        "cross_layer_integration": analysis["cross_layer_integration"],
+    }
+    prompt = _build_section_prompt(
+        contract,
+        "integrated_cio_conclusion",
+        prior_sections=conclusion_prior,
+    )
+    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
+    analysis["integrated_cio_conclusion"] = _clean_section_text(
+        raw_text, "integrated_cio_conclusion"
+    )
+    call_trace.append({"field": "integrated_cio_conclusion", "status": "PASS"})
+
+    # Governança fica deliberadamente depois da conclusão.
+    prompt = _build_section_prompt(contract, "governance")
+    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
+    analysis["governance"] = _clean_section_text(raw_text, "governance")
+    call_trace.append({"field": "governance", "status": "PASS"})
+
+    if not analysis["integrated_cio_conclusion"].strip():
+        raise CIOAIResponseError("Conclusão CIO integrada ausente ou vazia.")
+
+    report = _render_report(analysis)
+    structural_validation = validate_report_structure(report)
 
     return {
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "COMPACT_STRUCTURED_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_FUNCTIONAL_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
         "layers": _clone(context["layers"]),
         "relation_map": _clone(RELATION_MAP),
         "integration_contract": contract,
-        "structured_analysis": _clone(structured_analysis),
-        "structured_validation": structured_validation,
+        "analytical_sections": _clone(analysis),
+        "analytical_call_trace": call_trace,
         "structural_validation": structural_validation,
         "source_data_changed": False,
         "report": report,
@@ -759,7 +779,7 @@ __all__ = [
     "RELATION_MAP",
     "SYSTEM_PROMPT",
     "REPORT_SECTIONS",
-    "STRUCTURED_OUTPUT_FIELDS",
+    "ANALYTICAL_SECTION_FIELDS",
     "CIOAIError",
     "CIOAIConfigurationError",
     "CIOAIInputError",
@@ -770,7 +790,6 @@ __all__ = [
     "build_evidence_manifest",
     "build_integration_contract",
     "build_ai_prompt",
-    "validate_structured_analysis",
     "validate_report_structure",
     "run_cio_ai",
     "analyze_cio_context",
