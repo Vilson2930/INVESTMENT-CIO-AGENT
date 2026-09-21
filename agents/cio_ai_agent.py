@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.1"
-CIO_AI_BUILD = "2.4.1-DETERMINISTIC-FACTS-AI-SYNTHESIS-GUARDED"
+CIO_AI_VERSION = "2.4.2"
+CIO_AI_BUILD = "2.4.2-DETERMINISTIC-RISK-DIAGNOSIS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.1",
+        "contract_version": "2.4.2",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -518,6 +518,69 @@ def _compact_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
+
+
+
+def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Expõe deterministicamente os fatos que sustentam o estado atual da camada RISK.
+
+    Não inventa causalidade e não recalcula risco. Apenas separa os campos já
+    publicados pelo sistema global_portfolio para impedir que o LLM trate
+    "risco integrado CRÍTICO" como sinônimo de "BTC alto" ou de qualquer
+    componente isolado.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    risk_items = layers.get("RISK", [])
+    if not isinstance(risk_items, list) or not risk_items:
+        return {}
+
+    envelope = risk_items[0] if isinstance(risk_items[0], dict) else {}
+    payload = _safe_dict(envelope.get("payload"))
+    metrics = _safe_dict(payload.get("metrics"))
+    risk = _safe_dict(payload.get("risk"))
+    decision = _safe_dict(payload.get("decision"))
+
+    keys = (
+        "portfolio_total_value",
+        "survival_status",
+        "ruin_risk",
+        "survival_kill_switch",
+        "kill_switch",
+        "stress_level",
+        "forced_selling",
+        "risk_budget_level",
+        "risk_budget_score",
+        "top_risk_asset",
+        "max_risk_contribution_pct",
+        "liquidity_level",
+        "liquidity_score",
+        "counterparty_level",
+        "counterparty_score",
+        "integrated_risk_level",
+        "committee_action",
+        "final_verdict",
+    )
+
+    observed = {}
+    for key in keys:
+        if key in metrics and metrics[key] is not None:
+            observed[key] = _clone(metrics[key])
+        elif key in risk and risk[key] is not None:
+            observed[key] = _clone(risk[key])
+        elif key in decision and decision[key] is not None:
+            observed[key] = _clone(decision[key])
+
+    return {
+        "system_id": envelope.get("system_id", "global_portfolio"),
+        "rule": (
+            "Cada campo abaixo é um fato independente publicado pela camada RISK. "
+            "O estado integrado não deve ser atribuído a BTC, liquidez, orçamento "
+            "de risco ou qualquer outro componente isolado sem relação causal "
+            "explicitamente fornecida pela fonte."
+        ),
+        "observed_risk_facts": observed,
+    }
 
 
 def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
@@ -632,7 +695,10 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
     if field == "scenario":
         return {"SCENARIO": _clone(layers.get("SCENARIO", []))}
     if field == "risk":
-        return {"RISK": _clone(layers.get("RISK", []))}
+        return {
+            "RISK": _clone(layers.get("RISK", [])),
+            "risk_diagnosis": build_deterministic_risk_diagnosis(contract),
+        }
     if field == "micro_us":
         return {
             "MICRO_US": _clone(layers.get("MICRO_US", [])),
@@ -677,7 +743,13 @@ def _build_section_prompt(
             "Preserve literalmente os fatos relevantes e não faça recomendação."
         ),
         "risk": (
-            "Descreva a condição de risco da carteira representada pela camada RISK. "
+            "Diagnostique a condição atual da carteira usando a camada RISK e risk_diagnosis. "
+            "Separe explicitamente o estado integrado dos componentes que o sustentam ou coexistem com ele. "
+            "Se orçamento de risco, liquidez ou outro componente estiver aceitável enquanto Survival, Stress, "
+            "risco de ruína, Kill Switch ou o risco integrado permanecerem críticos/reprovados, deixe essa "
+            "distinção clara. NÃO atribua causalidade a BTC ou a qualquer componente isolado sem campo causal "
+            "explícito na fonte. Se a fonte não trouxer a regra interna que explica por que Survival ou Stress "
+            "estão nesse estado, diga apenas que a causa interna não está explicitada no contrato recebido. "
             "Risco não é ordem operacional."
         ),
         "micro_us": (
@@ -999,6 +1071,9 @@ def run_cio_ai(
         key: analysis[key]
         for key in ("scenario", "risk", "micro_us", "micro_br")
     }
+    # O diagnóstico factual de risco acompanha a integração para que a síntese
+    # preserve a distinção entre risco integrado e seus componentes.
+    integration_prior["risk_diagnosis"] = build_deterministic_risk_diagnosis(contract)
     synthesis_source = build_ai_synthesis_source(contract, integration_prior)
     synthesis_contract = _clone(contract)
     synthesis_contract["layers"] = {}
@@ -1096,6 +1171,7 @@ __all__ = [
     "build_functional_context",
     "build_evidence_manifest",
     "build_comparison_evidence",
+    "build_deterministic_risk_diagnosis",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
