@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1.1-CONTRACT-FIRST-ROBUST-STRUCTURE"
+CIO_AI_BUILD = "2.1.2-CONTRACT-FIRST-ROBUST-STRUCTURE"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,9 +469,9 @@ def validate_report_structure(report: str) -> Dict[str, Any]:
 
     matches = list(
         re.finditer(
-            r"(?mi)^\\s*(?:#{1,6}\\s*)?(?:\\*{1,2})?"
-            r"([1-7])\\s*[\\.\\-\\):]\\s*[^\\n]+"
-            r"(?:\\*{1,2})?\\s*$",
+            r"(?mi)^\s*(?:#{1,6}\s*)?(?:\*{1,2})?"
+            r"([1-7])\s*[.\-):]\s*[^\n]+"
+            r"(?:\*{1,2})?\s*$",
             report,
         )
     )
