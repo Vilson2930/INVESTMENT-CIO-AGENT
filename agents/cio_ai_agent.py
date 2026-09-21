@@ -15,6 +15,7 @@ Este módulo NÃO recalcula indicadores, NÃO altera sinais, NÃO cria scores e 
 
 import json
 import os
+import re
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -26,8 +27,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.5"
-CIO_AI_BUILD = "2.3.5-INTEGRATION-TO-CONCLUSION"
+CIO_AI_VERSION = "2.3.6"
+CIO_AI_BUILD = "2.3.6-FINAL-LANGUAGE-CLEANUP"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -279,6 +280,8 @@ REGRAS INVIOLÁVEIS
 - Não crie compra, venda, entrada, saída, espera, rebalanceamento, aumento ou redução de exposição.
 - Não crie plano de ação.
 - Não formule aconselhamento, orientação, recomendação de monitoramento ou linguagem normativa; descreva apenas o estado observado.
+- Limitações, defasagens e qualidade dos dados devem ser descritas como fatos, sem indicar necessidade ou recomendação de acompanhar, monitorar ou agir.
+- Não escreva contagem de palavras, caracteres ou tokens na resposta final.
 - Não use governança para determinar a conclusão de cenário.
 - Não acrescente relações que não estejam no contrato.
 - Toda afirmação factual específica deve ser recuperável literalmente do payload de um dos sete sistemas.
@@ -451,7 +454,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.5",
+        "contract_version": "2.3.6",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -645,6 +648,8 @@ REGRAS
 - Não transforme oportunidade em autorização para operar.
 - Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação.
 - Não formule recomendação, orientação, aconselhamento, necessidade de monitoramento ou linguagem normativa; descreva somente o estado observado.
+- Ao mencionar defasagem, limitação ou qualidade dos dados, descreva o fato de forma neutra; não diga que é necessário, recomendado, importante ou desejável acompanhar, monitorar ou agir.
+- Não informe nem exiba contagem de palavras, caracteres ou tokens no texto final.
 - Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.{conclusion_rules}
 - Máximo de {limits[field]} palavras.
 """.strip()
@@ -667,6 +672,15 @@ def _clean_section_text(text: str, field: str) -> str:
         raise CIOAIResponseError(f"Resposta vazia na etapa {field}.")
 
     cleaned = text.strip()
+
+    # Limpeza estritamente editorial: remove somente uma contagem de palavras
+    # acrescentada pelo modelo ao final, sem alterar o conteúdo analítico.
+    cleaned = re.sub(
+        r"\s*\(\s*\d+\s+(?:palavra|palavras|word|words)\s*\)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).rstrip()
 
     # Não aceitamos serialização/rascunho como peça final.
     lowered = cleaned.lstrip().lower()
@@ -838,7 +852,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.5:
+    V2.3.6:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) a integração recebe as quatro camadas completas;
