@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.2"
-CIO_AI_BUILD = "2.3.2-NEMOTRON-NATIVE-NONTHINKING"
+CIO_AI_VERSION = "2.3.3"
+CIO_AI_BUILD = "2.3.3-DETERMINISTIC-COMPARISON-EVIDENCE"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -282,6 +282,7 @@ REGRAS INVIOLÁVEIS
 - Não acrescente relações que não estejam no contrato.
 - Toda afirmação factual específica deve ser recuperável literalmente do payload de um dos sete sistemas.
 - Ao citar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo correspondente antes de redigir.
+- Alinhamento/convergência entre sistemas exige o mesmo ticker e o mesmo signal literal no comparison_evidence; sinais diferentes nunca são alinhamento.
 - Não faça autocorreções especulativas no texto; se um fato não puder ser sustentado pelo contrato, omita-o.
 """.strip()
 
@@ -335,6 +336,89 @@ def build_evidence_manifest(raw_input: Dict[str, Any]) -> Dict[str, Any]:
     return manifest
 
 
+
+def _literal_ticker_signals(payload: Dict[str, Any]) -> Dict[str, list]:
+    """
+    Indexa SOMENTE pares literais ticker/signal existentes nos blocos universais
+    positions e opportunities. Não normaliza sinal, não cria equivalência e não recalcula nada.
+    """
+    out: Dict[str, list] = {}
+    for block_name in ("positions", "opportunities"):
+        rows = payload.get(block_name)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ticker = row.get("ticker")
+            signal = row.get("signal")
+            if isinstance(ticker, str) and ticker.strip() and isinstance(signal, str) and signal.strip():
+                t = ticker.strip().upper()
+                pair = {"block": block_name, "signal": signal}
+                if pair not in out.setdefault(t, []):
+                    out[t].append(pair)
+    return out
+
+
+def build_comparison_evidence(systems: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Evidência determinística para comparações entre sistemas.
+    'literal_signal_matches' só existe quando o MESMO ticker aparece em pelo menos
+    dois sistemas e o texto do signal é literalmente idêntico.
+    Divergências também são preservadas, sem interpretação semântica.
+    """
+    by_system = {
+        system_id: _literal_ticker_signals(payload)
+        for system_id, payload in systems.items()
+    }
+
+    ticker_systems: Dict[str, Dict[str, list]] = {}
+    for system_id, ticker_map in by_system.items():
+        for ticker, observations in ticker_map.items():
+            ticker_systems.setdefault(ticker, {})[system_id] = _clone(observations)
+
+    common = {}
+    literal_matches = {}
+    divergences = {}
+
+    for ticker, system_map in ticker_systems.items():
+        if len(system_map) < 2:
+            continue
+        common[ticker] = _clone(system_map)
+
+        signal_sets = {
+            system_id: {obs["signal"] for obs in observations}
+            for system_id, observations in system_map.items()
+        }
+        systems_list = list(signal_sets)
+        shared = set(signal_sets[systems_list[0]])
+        for system_id in systems_list[1:]:
+            shared &= signal_sets[system_id]
+
+        if shared:
+            literal_matches[ticker] = {
+                "systems": systems_list,
+                "shared_literal_signals": sorted(shared),
+            }
+        else:
+            divergences[ticker] = {
+                system_id: sorted(signals)
+                for system_id, signals in signal_sets.items()
+            }
+
+    return {
+        "rule": (
+            "Alinhamento/convergência de sinal só pode ser afirmado para tickers "
+            "presentes em literal_signal_matches. Mesmo ticker com sinais diferentes "
+            "é divergência, não alinhamento."
+        ),
+        "by_system": by_system,
+        "common_tickers": common,
+        "literal_signal_matches": literal_matches,
+        "literal_signal_divergences": divergences,
+    }
+
+
 def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
     """
     Constrói em Python o contrato que limita o espaço de inferência da IA.
@@ -366,8 +450,8 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.2",
-        "architecture": "PYTHON_ORCHESTRATED_NEMOTRON_NONTHINKING_INTEGRATION",
+        "contract_version": "2.3.3",
+        "architecture": "PYTHON_ORCHESTRATED_DETERMINISTIC_COMPARISON_INTEGRATION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
@@ -375,6 +459,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
             "MICRO_BR": micro_br,
         },
         "authorized_relations": authorized_relations,
+        "comparison_evidence": build_comparison_evidence(systems),
         "conclusion_contract": {
             "question": (
                 "Considerando conjuntamente as quatro camadas funcionais formadas "
@@ -422,6 +507,7 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
     layers = _safe_dict(contract.get("layers"))
     relations = contract.get("authorized_relations", [])
     conclusion_contract = _safe_dict(contract.get("conclusion_contract"))
+    comparison_evidence = _safe_dict(contract.get("comparison_evidence"))
     governance = _safe_dict(contract.get("governance"))
 
     if field == "scenario":
@@ -429,7 +515,10 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
     if field == "risk":
         return {"RISK": _clone(layers.get("RISK", []))}
     if field == "micro_us":
-        return {"MICRO_US": _clone(layers.get("MICRO_US", []))}
+        return {
+            "MICRO_US": _clone(layers.get("MICRO_US", [])),
+            "comparison_evidence": _clone(comparison_evidence),
+        }
     if field == "micro_br":
         return {"MICRO_BR": _clone(layers.get("MICRO_BR", []))}
     if field == "cross_layer_integration":
@@ -439,6 +528,7 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
             "MICRO_US": _clone(layers.get("MICRO_US", [])),
             "MICRO_BR": _clone(layers.get("MICRO_BR", [])),
             "authorized_relations": _clone(relations),
+            "comparison_evidence": _clone(comparison_evidence),
         }
     if field == "integrated_cio_conclusion":
         return {
@@ -447,6 +537,7 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
             "MICRO_US": _clone(layers.get("MICRO_US", [])),
             "MICRO_BR": _clone(layers.get("MICRO_BR", [])),
             "authorized_relations": _clone(relations),
+            "comparison_evidence": _clone(comparison_evidence),
             "conclusion_contract": _clone(conclusion_contract),
         }
     if field == "governance":
@@ -477,7 +568,10 @@ def _build_section_prompt(
         ),
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
-            "Compare diretamente apenas dimensões realmente comuns."
+            "Compare diretamente apenas dimensões realmente comuns. "
+            "Ao falar em alinhamento, convergência ou confirmação de sinal entre sistemas, "
+            "use EXCLUSIVAMENTE comparison_evidence.literal_signal_matches. "
+            "Se o ticker estiver em literal_signal_divergences, descreva sinais diferentes, nunca alinhamento."
         ),
         "micro_br": (
             "Produza uma leitura conjunta da camada MICRO_BR. B3 e FII são classes diferentes; "
@@ -728,7 +822,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.2:
+    V2.3.3:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) integração e conclusão recebem conjuntamente as quatro camadas;
@@ -795,7 +889,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "PYTHON_ORCHESTRATED_NEMOTRON_NONTHINKING_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_DETERMINISTIC_COMPARISON_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
@@ -834,6 +928,7 @@ __all__ = [
     "normalize_system_outputs",
     "build_functional_context",
     "build_evidence_manifest",
+    "build_comparison_evidence",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
