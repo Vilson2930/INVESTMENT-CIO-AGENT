@@ -447,11 +447,11 @@ jobs:
                   "CIO Integration Engine retornou resultado inválido."
               )
 
-          analysis = cio_result.get("analysis")
+          report = cio_result.get("report")
 
-          if not isinstance(analysis, str) or not analysis.strip():
+          if not isinstance(report, str) or not report.strip():
               raise RuntimeError(
-                  "CIO Integration Engine retornou análise vazia."
+                  "CIO Integration Engine retornou relatório vazio."
               )
 
           output_directory = Path("cio_ai_output")
@@ -495,7 +495,7 @@ jobs:
               "w",
               encoding="utf-8",
           ) as file:
-              file.write(analysis)
+              file.write(report)
 
           print()
           print("=" * 70)
