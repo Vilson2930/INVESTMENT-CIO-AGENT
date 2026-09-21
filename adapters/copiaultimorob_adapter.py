@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 SYSTEM_ID = "global_portfolio"
 SYSTEM_NAME = "COPIAULTIMOROB"
 SOURCE_SYSTEM = "COPIAULTIMOROB"
-ADAPTER_VERSION = "1.5"
+ADAPTER_VERSION = "1.6"
 
 
 def _to_float(value, default=None):
@@ -370,6 +370,85 @@ def _determine_status(payload, warnings):
     return "OK"
 
 
+
+def _extract_allocation_positions(allocation):
+    """
+    Preserva as decisões por ativo publicadas pelo Allocation Advisor.
+
+    Não recalcula peso, alvo, desvio, ação ou prioridade. Apenas projeta
+    os campos existentes para positions do contrato universal.
+    """
+    if not isinstance(allocation, dict):
+        return []
+
+    candidates = None
+    for key in (
+        "positions",
+        "allocation_positions",
+        "allocation_table",
+        "assets",
+        "rows",
+        "details",
+        "allocation_details",
+    ):
+        value = allocation.get(key)
+        if isinstance(value, list):
+            candidates = value
+            break
+
+    if candidates is None:
+        return []
+
+    positions = []
+    for row in candidates:
+        if not isinstance(row, dict):
+            continue
+
+        ticker = _first_value(
+            row.get("ticker"),
+            row.get("ativo"),
+            row.get("asset"),
+            row.get("symbol"),
+        )
+        if ticker is None:
+            continue
+
+        action = _first_value(
+            row.get("acao_modelo"),
+            row.get("action_model"),
+            row.get("action"),
+        )
+
+        positions.append({
+            "ticker": str(ticker),
+            "signal": str(action) if action is not None else "UNDEFINED",
+            "current_weight_pct": _to_float(_first_value(
+                row.get("peso_atual_pct"),
+                row.get("current_weight_pct"),
+                row.get("peso_atual"),
+            )),
+            "target_weight_pct": _to_float(_first_value(
+                row.get("peso_alvo_pct"),
+                row.get("target_weight_pct"),
+                row.get("peso_alvo"),
+            )),
+            "drift_pct": _to_float(_first_value(
+                row.get("desvio_pct"),
+                row.get("drift_pct"),
+                row.get("desvio"),
+            )),
+            "model_action": action,
+            "model_priority": _first_value(
+                row.get("prioridade_modelo"),
+                row.get("model_priority"),
+                row.get("priority"),
+            ),
+            "source_data": dict(row),
+        })
+
+    return positions
+
+
 def build_copiaultimorob_agent_output(payload):
     """
     Traduz a saída do COPIAULTIMOROB para o contrato
@@ -427,6 +506,8 @@ def build_copiaultimorob_agent_output(payload):
         "allocation_advisor",
         "allocation_summary",
     )
+
+    allocation_positions = _extract_allocation_positions(allocation)
 
     survival = _get_section(
         payload,
@@ -934,7 +1015,8 @@ def build_copiaultimorob_agent_output(payload):
             "warnings": warnings,
         },
 
-        "positions": [],
+        # Decisões individuais do Allocation Advisor preservadas sem recálculo.
+        "positions": allocation_positions,
 
         "opportunities": [],
 
