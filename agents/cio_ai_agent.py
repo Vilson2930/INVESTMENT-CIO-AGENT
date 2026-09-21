@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.5"
-CIO_AI_BUILD = "2.3.5-INTEGRATION-TO-CONCLUSION"
+CIO_AI_VERSION = "2.3.8"
+CIO_AI_BUILD = "2.3.8-FACT-GROUNDED-RENDERING"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -451,7 +451,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.5",
+        "contract_version": "2.3.8",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -499,6 +499,60 @@ ANALYTICAL_SECTION_FIELDS = (
 def _compact_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
+
+
+def build_micro_us_fact_block(contract: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Bloco factual determinístico para MICRO_US.
+
+    O LLM não reconstrói ticker -> signal nem contagens de convergência/divergência.
+    Esses fatos são derivados exclusivamente de comparison_evidence já calculado em Python.
+    """
+    evidence = _safe_dict(contract.get("comparison_evidence"))
+    matches = _safe_dict(evidence.get("literal_signal_matches"))
+    divergences = _safe_dict(evidence.get("literal_signal_divergences"))
+
+    return {
+        "literal_signal_match_count": len(matches),
+        "literal_signal_divergence_count": len(divergences),
+        "literal_signal_matches": _clone(matches),
+        "literal_signal_divergences": _clone(divergences),
+        "rule": evidence.get("rule"),
+    }
+
+
+def render_micro_us_fact_block(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza os pares ticker/sinal diretamente em Python.
+    Nenhum ticker ou signal desta peça é gerado pelo modelo.
+    """
+    block = build_micro_us_fact_block(contract)
+    matches = block["literal_signal_matches"]
+    divergences = block["literal_signal_divergences"]
+
+    lines = []
+    if matches:
+        lines.append("Convergências literais confirmadas:")
+        for ticker in sorted(matches):
+            item = matches[ticker]
+            systems = ", ".join(item.get("systems", []))
+            signals = " | ".join(item.get("shared_literal_signals", []))
+            lines.append(f"- {ticker}: {signals} [{systems}]")
+    else:
+        lines.append("Convergências literais confirmadas: nenhuma.")
+
+    if divergences:
+        lines.append(f"Divergências literais confirmadas: {len(divergences)}.")
+        for ticker in sorted(divergences):
+            system_map = divergences[ticker]
+            parts = []
+            for system_id, signals in system_map.items():
+                parts.append(f"{system_id}=" + " | ".join(signals))
+            lines.append(f"- {ticker}: " + "; ".join(parts))
+    else:
+        lines.append("Divergências literais confirmadas: nenhuma.")
+
+    return "\n".join(lines)
 
 def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
     """
@@ -564,17 +618,18 @@ def _build_section_prompt(
         ),
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
-            "Compare diretamente apenas dimensões realmente comuns. "
-            "Ao falar em alinhamento, convergência ou confirmação de sinal entre sistemas, "
-            "use EXCLUSIVAMENTE comparison_evidence.literal_signal_matches. "
-            "Se o ticker estiver em literal_signal_divergences, descreva sinais diferentes, nunca alinhamento."
+            "Interprete somente o padrão agregado. NÃO escreva pares ticker/signal, NÃO conte "
+            "divergências e NÃO reconstrua listas factuais: esses itens serão renderizados "
+            "deterministicamente pelo Python a partir de comparison_evidence. "
+            "Ao falar em alinhamento ou convergência, respeite exclusivamente o estado agregado "
+            "de comparison_evidence.literal_signal_matches."
         ),
         "micro_br": (
             "Produza uma leitura conjunta da camada MICRO_BR. B3 e FII são classes diferentes; "
             "trate a relação como contexto regional quando não houver dimensão diretamente comparável."
         ),
         "cross_layer_integration": (
-            "Integre as quatro camadas usando SOMENTE authorized_relations. "
+            "Integre as quatro camadas usando SOMENTE authorized_relations. Para MICRO_US, use apenas o estado agregado de comparison_evidence; NÃO reenumere nem reconstrua pares ticker/signal. "
             "Explique coexistências, tensões, heterogeneidade ou seletividade sustentadas pelos fatos. "
             "Não transforme a integração em recomendação."
         ),
@@ -781,8 +836,8 @@ def _request_nvidia_analysis(
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=1.0,
-                top_p=0.95,
+                temperature=0.0,
+                top_p=1.0,
                 max_tokens=max_tokens,
                 extra_body={
                     "chat_template_kwargs": {
@@ -838,7 +893,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.5:
+    V2.3.8:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) a integração recebe as quatro camadas completas;
@@ -858,6 +913,9 @@ def run_cio_ai(
         analysis[field] = _request_final_section(
             client, contract, field, selected_model
         )
+        if field == "micro_us":
+            deterministic_micro_us = render_micro_us_fact_block(contract)
+            analysis[field] = analysis[field].rstrip() + "\n\n" + deterministic_micro_us
         call_trace.append({"field": field, "status": "PASS"})
 
     # Depois: integração real das quatro camadas, apoiada pelas sínteses anteriores,
@@ -916,6 +974,12 @@ def run_cio_ai(
         "analytical_call_trace": call_trace,
         "structural_validation": structural_validation,
         "source_data_changed": False,
+        "fact_grounding": {
+            "micro_us_ticker_signal_rendering": "DETERMINISTIC_PYTHON",
+            "llm_reconstruction_of_micro_us_ticker_signal_pairs": False,
+            "sampling_temperature": 0.0,
+            "sampling_top_p": 1.0,
+        },
         "report": report,
     }
 
