@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.2"
-CIO_AI_BUILD = "2.4.2-DETERMINISTIC-RISK-DIAGNOSIS"
+CIO_AI_VERSION = "2.4.3"
+CIO_AI_BUILD = "2.4.3-DETERMINISTIC-RISK-EVIDENCE"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.2",
+        "contract_version": "2.4.3",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -547,6 +547,11 @@ def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, An
         "ruin_risk",
         "survival_kill_switch",
         "kill_switch",
+        "runway_months",
+        "survival_score",
+        "kill_reasons",
+        "required_evidence",
+        "critical_flags",
         "stress_level",
         "forced_selling",
         "risk_budget_level",
@@ -570,6 +575,29 @@ def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, An
             observed[key] = _clone(risk[key])
         elif key in decision and decision[key] is not None:
             observed[key] = _clone(decision[key])
+
+    # Fallback estrutural para o adapter COPIAULTIMOROB V1.5.
+    # Apenas copia evidências já publicadas; não cria causalidade.
+    survival_detail = _safe_dict(risk.get("survival"))
+    integrated_detail = _safe_dict(risk.get("integrated"))
+
+    nested_aliases = {
+        "survival_status": survival_detail.get("status"),
+        "survival_score": survival_detail.get("score"),
+        "ruin_risk": survival_detail.get("ruin_risk"),
+        "survival_kill_switch": survival_detail.get("kill_switch"),
+        "runway_months": survival_detail.get("runway_months"),
+        "kill_reasons": survival_detail.get("kill_reasons"),
+        "required_evidence": survival_detail.get("required_evidence"),
+        "integrated_risk_level": integrated_detail.get("level"),
+        "critical_flags": integrated_detail.get("critical_flags"),
+        "committee_action": integrated_detail.get("committee_action"),
+        "final_verdict": integrated_detail.get("final_verdict"),
+    }
+
+    for key, value in nested_aliases.items():
+        if key not in observed and value is not None:
+            observed[key] = _clone(value)
 
     return {
         "system_id": envelope.get("system_id", "global_portfolio"),
@@ -748,9 +776,11 @@ def _build_section_prompt(
             "Se orçamento de risco, liquidez ou outro componente estiver aceitável enquanto Survival, Stress, "
             "risco de ruína, Kill Switch ou o risco integrado permanecerem críticos/reprovados, deixe essa "
             "distinção clara. NÃO atribua causalidade a BTC ou a qualquer componente isolado sem campo causal "
-            "explícito na fonte. Se a fonte não trouxer a regra interna que explica por que Survival ou Stress "
-            "estão nesse estado, diga apenas que a causa interna não está explicitada no contrato recebido. "
-            "Risco não é ordem operacional."
+            "explícito na fonte. Quando kill_reasons, runway_months ou required_evidence estiverem presentes, "
+            "use-os como explicação factual do estado de Survival, sem criar relação adicional. "
+            "Não diga que a causa de Survival não está explicitada se esses campos a explicitarem. "
+            "Para Stress, somente explique a causa se houver campo causal explícito na fonte; caso contrário, "
+            "limite-se ao estado, score e forced selling observados. Risco não é ordem operacional."
         ),
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
