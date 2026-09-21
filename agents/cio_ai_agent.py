@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1.3-BOUNDED-REPORT"
+CIO_AI_BUILD = "2.1.4-FACT-GROUNDED-INTEGRATION"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -280,6 +280,9 @@ REGRAS INVIOLÁVEIS
 - Não crie plano de ação.
 - Não use governança para determinar a conclusão de cenário.
 - Não acrescente relações que não estejam no contrato.
+- Toda afirmação factual específica deve ser recuperável literalmente do payload/evidence_manifest de um dos sete sistemas.
+- Ao citar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo correspondente antes de redigir.
+- Não faça autocorreções especulativas no texto; se um fato não puder ser sustentado pelo contrato, omita-o.
 """.strip()
 
 
@@ -305,6 +308,31 @@ def _system_fact(system_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         "layer": catalog["layer"],
         "payload": _clone(payload),
     }
+
+
+def build_evidence_manifest(raw_input: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Índice determinístico de evidências por sistema.
+
+    Não resume, não recalcula e não interpreta. Apenas expõe, por system_id,
+    os blocos universais que o redator deve usar como fonte factual.
+    """
+    systems = normalize_system_outputs(raw_input)
+    manifest: Dict[str, Any] = {}
+    for system_id, payload in systems.items():
+        manifest[system_id] = {
+            "system_id": system_id,
+            "status": _clone(payload.get("status")),
+            "decision": _clone(payload.get("decision")),
+            "metrics": _clone(payload.get("metrics")),
+            "risk": _clone(payload.get("risk")),
+            "data_quality": _clone(payload.get("data_quality")),
+            "positions": _clone(payload.get("positions")),
+            "opportunities": _clone(payload.get("opportunities")),
+            "audit": _clone(payload.get("audit")),
+            "metadata": _clone(payload.get("metadata")),
+        }
+    return manifest
 
 
 def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
@@ -346,6 +374,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
             "MICRO_US": micro_us,
             "MICRO_BR": micro_br,
         },
+        "evidence_manifest": build_evidence_manifest(raw_input),
         "authorized_relations": authorized_relations,
         "conclusion_contract": {
             "question": (
@@ -417,12 +446,16 @@ REGRAS DE SAÍDA
 ===============
 - Não faça uma votação entre sistemas.
 - Não acrescente fatos ausentes.
+- Antes de mencionar ticker, contagem, status, decisão, ranking, score ou peso, confira o valor no evidence_manifest/payload correspondente.
+- Não misture ranking/opportunities com carteira/positions: preserve a semântica do bloco de origem.
+- Não faça autocorreções, dúvidas ou alternativas entre parênteses; use somente o fato sustentado pelo contrato.
 - Não acrescente relações além de authorized_relations.
 - A seção 5 descreve o padrão conjunto observado.
 - A seção 6 responde à conclusion_contract.question.
 - A seção 6 é uma LEITURA DO CENÁRIO, não uma decisão de investimento.
 - Não diga o que o investidor deve fazer.
 - Não crie recomendação, plano de ação ou autorização operacional.
+- Ao final das seções 1 a 6, inclua uma linha "Fontes: ..." com somente system_id(s) realmente usados naquela seção.
 - A seção 7 apenas relata governance.
 - Seja conciso: cada seção deve ter no máximo 180 palavras.
 - A seção 6 deve ter no máximo 220 palavras.
@@ -541,6 +574,8 @@ O relatório completo deve ter no máximo 1.300 palavras.
 Reserve espaço para todas as sete seções.
 Não explique a correção.
 Não crie recomendação, plano de ação, novo sinal, novo score ou causalidade.
+Antes de citar ticker, contagem, status, decisão, ranking, score ou peso, confira o evidence_manifest/payload.
+Não misture opportunities/ranking com positions/carteira e não faça autocorreções especulativas.
 Entregue somente o relatório completo.
 """.strip()
 
@@ -669,6 +704,7 @@ __all__ = [
     "CIOAIStructuralValidationError",
     "normalize_system_outputs",
     "build_functional_context",
+    "build_evidence_manifest",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
