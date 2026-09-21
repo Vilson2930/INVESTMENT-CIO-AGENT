@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 SYSTEM_ID = "global_portfolio"
 SYSTEM_NAME = "COPIAULTIMOROB"
 SOURCE_SYSTEM = "COPIAULTIMOROB"
-ADAPTER_VERSION = "1.4"
+ADAPTER_VERSION = "1.5"
 
 
 def _to_float(value, default=None):
@@ -539,6 +539,33 @@ def build_copiaultimorob_agent_output(payload):
         payload.get("kill_switch"),
     )
 
+    # Preserva as evidências causais já calculadas pelo COPIAULTIMOROB.
+    # O adapter não interpreta nem recalcula esses campos.
+    runway_months = _first_value(
+        survival.get("runway_months"),
+        payload.get("runway_months"),
+    )
+
+    survival_score = _first_value(
+        survival.get("survival_score"),
+        payload.get("survival_score"),
+    )
+
+    kill_reasons = _first_value(
+        survival.get("kill_reasons"),
+        payload.get("kill_reasons"),
+    )
+
+    required_evidence = _first_value(
+        survival.get("required_evidence"),
+        payload.get("required_evidence"),
+    )
+
+    critical_flags = _first_value(
+        governance.get("critical_flags"),
+        payload.get("critical_flags"),
+    )
+
     stress_level = _first_value(
         stress.get("stress_level"),
         payload.get("stress_level"),
@@ -765,6 +792,22 @@ def build_copiaultimorob_agent_output(payload):
                 survival_kill_switch
             ),
 
+            # Evidências de Survival preservadas literalmente da origem.
+            "runway_months": _to_float(
+                runway_months
+            ),
+
+            "survival_score": _to_float(
+                survival_score
+            ),
+
+            "kill_reasons": kill_reasons,
+
+            "required_evidence": required_evidence,
+
+            # Flags determinísticas publicadas pelo comitê integrado.
+            "critical_flags": critical_flags,
+
             "stress_level": stress_level,
 
             "stress_score": _to_float(
@@ -862,6 +905,24 @@ def build_copiaultimorob_agent_output(payload):
             ),
 
             "alerts": warnings,
+
+            # Evidência explicativa preservada do sistema de origem.
+            "survival": {
+                "status": survival_status,
+                "score": _to_float(survival_score),
+                "ruin_risk": ruin_risk,
+                "kill_switch": _to_bool(survival_kill_switch),
+                "runway_months": _to_float(runway_months),
+                "kill_reasons": kill_reasons,
+                "required_evidence": required_evidence,
+            },
+
+            "integrated": {
+                "level": integrated_risk_level,
+                "critical_flags": critical_flags,
+                "committee_action": committee_action,
+                "final_verdict": final_verdict,
+            },
         },
 
         "data_quality": {
