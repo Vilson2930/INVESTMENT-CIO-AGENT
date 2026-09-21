@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1.4-FACT-GROUNDED-INTEGRATION"
+CIO_AI_BUILD = "2.1.5-FACT-GROUNDED-RESILIENT-OUTPUT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -650,12 +650,47 @@ def run_cio_ai(
         structural_retry_used = True
         first_structural_rejection = str(exc)
 
-        report = _request_nvidia_analysis(
+        retry_report = _request_nvidia_analysis(
             client,
             _build_structural_reconstruction_prompt(contract, exc),
             selected_model,
         )
-        structural_validation = validate_report_structure(report)
+
+        # A estrutura do texto é apresentação, não lógica de investimento.
+        # Uma segunda falha de formatação não deve derrubar uma integração factual válida.
+        # Mantemos a resposta com maior cobertura estrutural e registramos WARN para auditoria.
+        try:
+            structural_validation = validate_report_structure(retry_report)
+            report = retry_report
+        except CIOAIStructuralValidationError as retry_exc:
+            import re
+
+            def _section_coverage(text: str) -> int:
+                numbers = {
+                    int(m.group(1))
+                    for m in re.finditer(
+                        r"(?mi)^\s*(?:#{1,6}\s*)?(?:\*{1,2})?"
+                        r"([1-7])\s*[.\-):]\s*[^\n]+"
+                        r"(?:\*{1,2})?\s*$",
+                        text or "",
+                    )
+                }
+                return len(numbers)
+
+            first_coverage = _section_coverage(report)
+            retry_coverage = _section_coverage(retry_report)
+            if retry_coverage > first_coverage:
+                report = retry_report
+
+            structural_validation = {
+                "status": "WARN",
+                "sections_found": max(first_coverage, retry_coverage),
+                "integrated_conclusion_present": bool(
+                    re.search(r"(?i)conclus[aã]o\s+cio|conclus[aã]o\s+integrada", report or "")
+                ),
+                "validation_mode": "NON_FATAL_PRESENTATION_FALLBACK",
+                "retry_error": str(retry_exc),
+            }
 
     structural_validation = {
         **structural_validation,
