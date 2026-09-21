@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1.5-FACT-GROUNDED-RESILIENT-OUTPUT"
+CIO_AI_VERSION = "2.2"
+CIO_AI_BUILD = "2.2-STRUCTURED-INTEGRATION-OUTPUT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -400,36 +400,38 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+STRUCTURED_OUTPUT_FIELDS = (
+    "scenario",
+    "risk",
+    "micro_us",
+    "micro_br",
+    "cross_layer_integration",
+    "integrated_cio_conclusion",
+    "governance",
+)
+
+
 def build_ai_prompt(context: Dict[str, Any]) -> str:
     """
-    Compatibilidade pública: recebe o contexto funcional e o transforma no prompt.
-    Para a execução V2.1, run_cio_ai usa diretamente build_integration_contract().
+    Compatibilidade pública.
+    Na V2.2 a saída da NVIDIA é um objeto JSON analítico estruturado.
     """
-    context_json = json.dumps(context, ensure_ascii=False, indent=2, default=str)
-    sections = "\n".join(REPORT_SECTIONS)
-    return f"""
-Redija o relatório a partir do contrato abaixo.
-
-CONTRATO
-========
-{context_json}
-
-FORMATO OBRIGATÓRIO
-===================
-{sections}
-
-A seção 5 deve explicar somente relações autorizadas pelo contrato.
-A seção 6 deve responder à pergunta central de forma DESCRITIVA, não prescritiva.
-A seção 7 deve apenas registrar governança e rastreabilidade.
-
-Não produza recomendações nem plano de ação.
-Entregue somente o relatório final.
-""".strip()
+    return _build_structured_prompt(context)
 
 
-def _build_contract_prompt(contract: Dict[str, Any]) -> str:
+def _build_structured_prompt(contract: Dict[str, Any]) -> str:
     contract_json = json.dumps(contract, ensure_ascii=False, indent=2, default=str)
-    sections = "\n".join(REPORT_SECTIONS)
+    schema_example = {
+        "scenario": "texto factual do cenário/regime",
+        "risk": "texto factual do risco da carteira",
+        "micro_us": "texto integrado dos sistemas micro dos EUA",
+        "micro_br": "texto integrado dos sistemas micro do Brasil",
+        "cross_layer_integration": "integração entre as camadas usando apenas authorized_relations",
+        "integrated_cio_conclusion": "uma única leitura CIO integrada e descritiva",
+        "governance": "governança e rastreabilidade, separadas da conclusão",
+    }
+    schema_json = json.dumps(schema_example, ensure_ascii=False, indent=2)
+
     return f"""
 CONTRATO DE INTEGRAÇÃO CIO
 ==========================
@@ -437,32 +439,162 @@ CONTRATO DE INTEGRAÇÃO CIO
 
 TAREFA
 ======
-Transforme exclusivamente este contrato em um relatório analítico legível.
+Analise conjuntamente os sete sistemas conforme suas quatro camadas funcionais e
+as relações explicitamente autorizadas no contrato.
 
-Use exatamente estas seções e nesta ordem:
-{sections}
+Sua resposta NÃO é um rascunho, plano, raciocínio intermediário ou Markdown.
+Retorne SOMENTE um objeto JSON válido, sem texto antes ou depois e sem bloco ```.
 
-REGRAS DE SAÍDA
-===============
-- Não faça uma votação entre sistemas.
+Use EXATAMENTE estas sete chaves:
+{schema_json}
+
+REGRAS
+======
+- Os sete sistemas não são votos equivalentes.
+- Preserve os papéis SCENARIO, RISK, MICRO_US e MICRO_BR.
 - Não acrescente fatos ausentes.
-- Antes de mencionar ticker, contagem, status, decisão, ranking, score ou peso, confira o valor no evidence_manifest/payload correspondente.
-- Não misture ranking/opportunities com carteira/positions: preserve a semântica do bloco de origem.
-- Não faça autocorreções, dúvidas ou alternativas entre parênteses; use somente o fato sustentado pelo contrato.
+- Toda afirmação factual específica deve ser sustentada pelo payload/evidence_manifest.
+- Antes de mencionar ticker, contagem, status, decisão, ranking, score ou peso, confira o campo de origem.
+- Não misture opportunities/ranking com positions/carteira.
 - Não acrescente relações além de authorized_relations.
-- A seção 5 descreve o padrão conjunto observado.
-- A seção 6 responde à conclusion_contract.question.
-- A seção 6 é uma LEITURA DO CENÁRIO, não uma decisão de investimento.
-- Não diga o que o investidor deve fazer.
-- Não crie recomendação, plano de ação ou autorização operacional.
-- Ao final das seções 1 a 6, inclua uma linha "Fontes: ..." com somente system_id(s) realmente usados naquela seção.
-- A seção 7 apenas relata governance.
-- Seja conciso: cada seção deve ter no máximo 180 palavras.
-- A seção 6 deve ter no máximo 220 palavras.
-- A seção 7 deve ter no máximo 120 palavras.
-- O relatório completo deve ter no máximo 1.300 palavras.
-- Reserve obrigatoriamente espaço para as sete seções; não aprofunde uma seção às custas das seguintes.
-- Entregue somente o relatório final.
+- cross_layer_integration deve efetivamente relacionar as camadas; não apenas resumir cada sistema isoladamente.
+- integrated_cio_conclusion deve responder diretamente à conclusion_contract.question e sintetizar as quatro camadas em UMA leitura.
+- integrated_cio_conclusion é descritiva, não prescritiva.
+- Não crie recomendação, plano de ação, compra, venda, rebalanceamento ou autorização operacional.
+- governance deve permanecer separada da conclusão analítica.
+- Cada valor deve ser uma string não vazia e concisa.
+- Não exponha raciocínio interno, planejamento da resposta ou autocorreções.
+""".strip()
+
+
+def _extract_json_object(text: str) -> Dict[str, Any]:
+    """Extrai somente o objeto JSON final; não interpreta conteúdo analítico."""
+    if not isinstance(text, str) or not text.strip():
+        raise CIOAIResponseError("A NVIDIA NIM retornou resposta vazia.")
+
+    candidate = text.strip()
+
+    # Tolerância apenas de transporte: remove cerca Markdown se o provedor a inserir.
+    if candidate.startswith("```"):
+        lines = candidate.splitlines()
+        if lines and lines[0].lstrip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        candidate = "\n".join(lines).strip()
+        if candidate.lower().startswith("json"):
+            candidate = candidate[4:].lstrip()
+
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        raise CIOAIResponseError(
+            f"Saída estruturada inválida: JSON não pôde ser interpretado ({exc})."
+        ) from exc
+
+    if not isinstance(parsed, dict):
+        raise CIOAIResponseError("Saída estruturada inválida: a raiz deve ser um objeto JSON.")
+
+    return parsed
+
+
+def validate_structured_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Valida contrato de saída sem julgar palavras, tickers ou conclusões."""
+    if not isinstance(analysis, dict):
+        raise CIOAIResponseError("Análise estruturada deve ser um dicionário.")
+
+    expected = list(STRUCTURED_OUTPUT_FIELDS)
+    missing = [field for field in expected if field not in analysis]
+    extra = [field for field in analysis if field not in STRUCTURED_OUTPUT_FIELDS]
+
+    if missing:
+        raise CIOAIResponseError(
+            "Saída estruturada incompleta. Campos ausentes: " + ", ".join(missing)
+        )
+    if extra:
+        raise CIOAIResponseError(
+            "Saída estruturada contém campos não autorizados: " + ", ".join(extra)
+        )
+
+    empty = [
+        field for field in expected
+        if not isinstance(analysis.get(field), str) or not analysis[field].strip()
+    ]
+    if empty:
+        raise CIOAIResponseError(
+            "Saída estruturada contém campos vazios/inválidos: " + ", ".join(empty)
+        )
+
+    return {
+        "status": "PASS",
+        "fields_found": len(expected),
+        "integrated_conclusion_present": bool(
+            analysis["integrated_cio_conclusion"].strip()
+        ),
+        "validation_mode": "STRUCTURED_OUTPUT_CONTRACT",
+    }
+
+
+def _render_report(analysis: Dict[str, str]) -> str:
+    """Python monta deterministicamente o relatório; a IA fornece apenas o conteúdo."""
+    mapping = (
+        ("1. CENÁRIO E REGIME", "scenario"),
+        ("2. RISCO DA CARTEIRA", "risk"),
+        ("3. MICRO EUA", "micro_us"),
+        ("4. MICRO BRASIL", "micro_br"),
+        ("5. INTEGRAÇÃO ENTRE CAMADAS", "cross_layer_integration"),
+        ("6. CONCLUSÃO CIO INTEGRADA", "integrated_cio_conclusion"),
+        ("7. GOVERNANÇA E RASTREABILIDADE", "governance"),
+    )
+    return "\n\n".join(
+        f"{title}\n{analysis[field].strip()}"
+        for title, field in mapping
+    )
+
+
+def validate_report_structure(report: str) -> Dict[str, Any]:
+    """
+    Compatibilidade: na V2.2 o relatório é renderizado deterministicamente pelo Python.
+    A validação verifica apenas que os sete títulos produzidos pelo próprio renderer existem.
+    """
+    if not isinstance(report, str) or not report.strip():
+        raise CIOAIStructuralValidationError("Relatório CIO vazio.")
+
+    positions = []
+    for title in REPORT_SECTIONS:
+        pos = report.find(title)
+        if pos < 0:
+            raise CIOAIStructuralValidationError(f"Seção ausente: {title}")
+        positions.append(pos)
+
+    if positions != sorted(positions):
+        raise CIOAIStructuralValidationError("Seções fora da ordem determinística.")
+
+    return {
+        "status": "PASS",
+        "sections_found": 7,
+        "integrated_conclusion_present": True,
+        "validation_mode": "PYTHON_RENDERED_REPORT",
+    }
+
+
+def _build_structured_retry_prompt(
+    contract: Dict[str, Any],
+    first_error: Exception,
+) -> str:
+    """
+    Uma única recuperação de CONTRATO DE SAÍDA.
+    Não adiciona regras semânticas específicas nem altera os fatos.
+    """
+    base = _build_structured_prompt(contract)
+    return f"""
+{base}
+
+A tentativa anterior não respeitou o contrato técnico de saída:
+{type(first_error).__name__}: {first_error}
+
+Gere novamente SOMENTE o objeto JSON válido com as sete chaves exigidas.
+Não explique o erro e não produza Markdown.
 """.strip()
 
 
@@ -625,92 +757,69 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.1:
+    V2.2:
     1) Python preserva e organiza os sete sistemas em contrato;
-    2) NVIDIA redige a leitura do contrato;
-    3) Python valida somente o contrato estrutural do relatório.
+    2) NVIDIA devolve sete campos analíticos estruturados;
+    3) Python valida os campos e monta deterministicamente o relatório;
+    4) ausência de conclusão integrada é erro, não WARN.
     """
     selected_model = model or DEFAULT_MODEL
 
-    # Mantido para rastreabilidade/compatibilidade.
     context = build_functional_context(raw_input)
-
-    # Esta é a fronteira principal da V2.1.
     contract = build_integration_contract(raw_input)
-    prompt = _build_contract_prompt(contract)
+    prompt = _build_structured_prompt(contract)
     client = _build_nvidia_client(api_key=api_key)
-    report = _request_nvidia_analysis(client, prompt, selected_model)
 
-    structural_retry_used = False
-    first_structural_rejection = None
+    raw_response = _request_nvidia_analysis(client, prompt, selected_model)
+
+    retry_used = False
+    first_rejection = None
 
     try:
-        structural_validation = validate_report_structure(report)
-    except CIOAIStructuralValidationError as exc:
-        structural_retry_used = True
-        first_structural_rejection = str(exc)
+        structured_analysis = _extract_json_object(raw_response)
+        structured_validation = validate_structured_analysis(structured_analysis)
+    except CIOAIResponseError as exc:
+        retry_used = True
+        first_rejection = str(exc)
 
-        retry_report = _request_nvidia_analysis(
+        retry_response = _request_nvidia_analysis(
             client,
-            _build_structural_reconstruction_prompt(contract, exc),
+            _build_structured_retry_prompt(contract, exc),
             selected_model,
         )
+        structured_analysis = _extract_json_object(retry_response)
+        structured_validation = validate_structured_analysis(structured_analysis)
 
-        # A estrutura do texto é apresentação, não lógica de investimento.
-        # Uma segunda falha de formatação não deve derrubar uma integração factual válida.
-        # Mantemos a resposta com maior cobertura estrutural e registramos WARN para auditoria.
-        try:
-            structural_validation = validate_report_structure(retry_report)
-            report = retry_report
-        except CIOAIStructuralValidationError as retry_exc:
-            import re
+    # A conclusão integrada é parte obrigatória do contrato.
+    if not structured_validation.get("integrated_conclusion_present"):
+        raise CIOAIResponseError(
+            "Saída inválida: integrated_cio_conclusion ausente ou vazia."
+        )
 
-            def _section_coverage(text: str) -> int:
-                numbers = {
-                    int(m.group(1))
-                    for m in re.finditer(
-                        r"(?mi)^\s*(?:#{1,6}\s*)?(?:\*{1,2})?"
-                        r"([1-7])\s*[.\-):]\s*[^\n]+"
-                        r"(?:\*{1,2})?\s*$",
-                        text or "",
-                    )
-                }
-                return len(numbers)
+    report = _render_report(structured_analysis)
+    structural_validation = validate_report_structure(report)
 
-            first_coverage = _section_coverage(report)
-            retry_coverage = _section_coverage(retry_report)
-            if retry_coverage > first_coverage:
-                report = retry_report
-
-            structural_validation = {
-                "status": "WARN",
-                "sections_found": max(first_coverage, retry_coverage),
-                "integrated_conclusion_present": bool(
-                    re.search(r"(?i)conclus[aã]o\s+cio|conclus[aã]o\s+integrada", report or "")
-                ),
-                "validation_mode": "NON_FATAL_PRESENTATION_FALLBACK",
-                "retry_error": str(retry_exc),
-            }
-
-    structural_validation = {
-        **structural_validation,
-        "retry_used": structural_retry_used,
-        "retry_count": 1 if structural_retry_used else 0,
-        "max_structural_retries": 1,
-        "first_rejection": first_structural_rejection,
+    structured_validation = {
+        **structured_validation,
+        "retry_used": retry_used,
+        "retry_count": 1 if retry_used else 0,
+        "max_output_contract_retries": 1,
+        "first_rejection": first_rejection,
     }
 
     return {
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "architecture": "STRUCTURED_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
         "layers": _clone(context["layers"]),
         "relation_map": _clone(RELATION_MAP),
         "integration_contract": contract,
+        "structured_analysis": _clone(structured_analysis),
+        "structured_validation": structured_validation,
         "structural_validation": structural_validation,
         "source_data_changed": False,
         "report": report,
@@ -732,6 +841,7 @@ __all__ = [
     "RELATION_MAP",
     "SYSTEM_PROMPT",
     "REPORT_SECTIONS",
+    "STRUCTURED_OUTPUT_FIELDS",
     "CIOAIError",
     "CIOAIConfigurationError",
     "CIOAIInputError",
@@ -742,6 +852,7 @@ __all__ = [
     "build_evidence_manifest",
     "build_integration_contract",
     "build_ai_prompt",
+    "validate_structured_analysis",
     "validate_report_structure",
     "run_cio_ai",
     "analyze_cio_context",
