@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.3"
-CIO_AI_BUILD = "2.4.3-DETERMINISTIC-RISK-EVIDENCE"
+CIO_AI_VERSION = "2.4.4"
+CIO_AI_BUILD = "2.4.4-DETERMINISTIC-ALLOCATION-EVIDENCE"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -276,7 +276,7 @@ REGRAS INVIOLÁVEIS
 - Não invente causalidade.
 - Não transforme risco em ordem de reduzir exposição.
 - Não transforme oportunidade em autorização para operar.
-- Não crie compra, venda, entrada, saída, espera, rebalanceamento, aumento ou redução de exposição.
+- Não crie compra, venda, entrada, saída, espera, rebalanceamento, aumento ou redução de exposição. Decisões operacionais já publicadas por um sistema de origem podem ser relatadas literalmente, com atribuição explícita à fonte.
 - Não crie plano de ação.
 - Não formule aconselhamento, orientação, recomendação de monitoramento ou linguagem normativa; descreva apenas o estado observado.
 - Não use governança para determinar a conclusão de cenário.
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.3",
+        "contract_version": "2.4.4",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -541,6 +541,25 @@ def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, An
     risk = _safe_dict(payload.get("risk"))
     decision = _safe_dict(payload.get("decision"))
 
+    # Adapter COPIAULTIMOROB V1.6 publica em positions as decisões literais
+    # do Allocation Advisor. O CIO apenas as preserva; não recalcula nem
+    # transforma essas decisões em recomendação própria.
+    allocation_positions = []
+    raw_positions = payload.get("positions")
+    if isinstance(raw_positions, list):
+        for row in raw_positions:
+            if not isinstance(row, dict):
+                continue
+            allocation_positions.append({
+                "ticker": _clone(row.get("ticker")),
+                "current_weight_pct": _clone(row.get("current_weight_pct")),
+                "target_weight_pct": _clone(row.get("target_weight_pct")),
+                "drift_pct": _clone(row.get("drift_pct")),
+                "model_action": _clone(row.get("model_action")),
+                "model_priority": _clone(row.get("model_priority")),
+                "source_data": _clone(row.get("source_data")),
+            })
+
     keys = (
         "portfolio_total_value",
         "survival_status",
@@ -608,6 +627,12 @@ def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, An
             "explicitamente fornecida pela fonte."
         ),
         "observed_risk_facts": observed,
+        "allocation_advisor_positions": allocation_positions,
+        "allocation_rule": (
+            "As posições acima são decisões literais do Allocation Advisor do COPIAULTIMOROB. "
+            "Devem ser atribuídas ao sistema de origem e não podem ser apresentadas como "
+            "recomendação criada pelo CIO."
+        ),
     }
 
 
@@ -780,7 +805,11 @@ def _build_section_prompt(
             "use-os como explicação factual do estado de Survival, sem criar relação adicional. "
             "Não diga que a causa de Survival não está explicitada se esses campos a explicitarem. "
             "Para Stress, somente explique a causa se houver campo causal explícito na fonte; caso contrário, "
-            "limite-se ao estado, score e forced selling observados. Risco não é ordem operacional."
+            "limite-se ao estado, score e forced selling observados. "
+            "Quando allocation_advisor_positions trouxer ticker, peso atual, peso-alvo, desvio, model_action "
+            "e model_priority, descreva esses fatos literalmente e atribua a decisão ao Allocation Advisor do "
+            "COPIAULTIMOROB. Uma ação como REDUZIR já publicada pela fonte pode ser relatada, mas NÃO deve ser "
+            "transformada em recomendação própria do CIO. Risco, por si só, não é ordem operacional."
         ),
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
@@ -870,7 +899,7 @@ REGRAS
 - Não invente causalidade.
 - Não transforme risco em ordem de reduzir exposição.
 - Não transforme oportunidade em autorização para operar.
-- Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação.
+- Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação. Decisões operacionais já presentes na FONTE AUTORIZADA podem ser relatadas literalmente e atribuídas ao sistema de origem.
 - Não formule recomendação, orientação, aconselhamento, necessidade de monitoramento ou linguagem normativa; descreva somente o estado observado.
 - Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.{conclusion_rules}
 - Máximo de {limits[field]} palavras.
