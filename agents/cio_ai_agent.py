@@ -27,7 +27,7 @@ except ImportError:
 
 
 CIO_AI_VERSION = "2.1"
-CIO_AI_BUILD = "2.1-CONTRACT-FIRST-INTEGRATION"
+CIO_AI_BUILD = "2.1.1-CONTRACT-FIRST-ROBUST-STRUCTURE"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -368,7 +368,6 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
             ],
         },
         "governance": _clone(_safe_dict(raw_input.get("governance"))),
-        "source_data": _clone(systems),
     }
 
 
@@ -456,35 +455,55 @@ def _extract_response_text(completion: Any) -> str:
 
 
 def validate_report_structure(report: str) -> Dict[str, Any]:
+    """
+    Valida a estrutura sem depender da redação literal do título.
+
+    O contrato estrutural é a presença das seções numeradas 1..7, em ordem,
+    com conteúdo entre elas. A IA pode usar Markdown (#, ##, **), espaços ou
+    pequena variação tipográfica no título sem transformar isso em falha.
+    """
     if not isinstance(report, str) or not report.strip():
         raise CIOAIStructuralValidationError("Relatório CIO vazio.")
 
-    positions = []
-    for section in REPORT_SECTIONS:
-        pos = report.find(section)
-        if pos < 0:
-            raise CIOAIStructuralValidationError(
-                f"Seção obrigatória ausente: {section}"
-            )
-        positions.append(pos)
+    import re
 
-    if positions != sorted(positions):
+    matches = list(
+        re.finditer(
+            r"(?mi)^\\s*(?:#{1,6}\\s*)?(?:\\*{1,2})?"
+            r"([1-7])\\s*[\\.\\-\\):]\\s*[^\\n]+"
+            r"(?:\\*{1,2})?\\s*$",
+            report,
+        )
+    )
+
+    found = []
+    positions = {}
+    for match in matches:
+        number = int(match.group(1))
+        if number not in positions:
+            found.append(number)
+            positions[number] = (match.start(), match.end())
+
+    expected = list(range(1, 8))
+    if found != expected:
         raise CIOAIStructuralValidationError(
-            "As seções do relatório estão fora da ordem exigida."
+            f"Estrutura incompleta. Seções numeradas encontradas: {found}; "
+            f"esperadas: {expected}"
         )
 
-    for index, section in enumerate(REPORT_SECTIONS):
-        start = positions[index] + len(section)
-        end = positions[index + 1] if index + 1 < len(positions) else len(report)
-        if not report[start:end].strip():
+    for number in expected:
+        body_start = positions[number][1]
+        body_end = positions[number + 1][0] if number < 7 else len(report)
+        if not report[body_start:body_end].strip():
             raise CIOAIStructuralValidationError(
-                f"Seção obrigatória vazia: {section}"
+                f"Seção {number} está vazia."
             )
 
     return {
         "status": "PASS",
-        "sections_found": len(REPORT_SECTIONS),
+        "sections_found": 7,
         "integrated_conclusion_present": True,
+        "validation_mode": "NUMBERED_SECTION_CONTRACT",
     }
 
 
@@ -507,9 +526,11 @@ Reconstrua o relatório do zero usando exclusivamente o mesmo contrato:
 
 {contract_json}
 
-Use exatamente estas sete seções, nesta ordem, todas com conteúdo:
+Produza exatamente sete seções numeradas de 1 a 7, nesta ordem, todas com conteúdo.
+Use estes títulos como referência:
 {sections}
 
+O requisito estrutural obrigatório é a numeração 1..7 em ordem.
 Não explique a correção.
 Não crie recomendação, plano de ação, novo sinal, novo score ou causalidade.
 Entregue somente o relatório completo.
