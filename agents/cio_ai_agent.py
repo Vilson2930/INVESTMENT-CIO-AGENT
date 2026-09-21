@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3"
-CIO_AI_BUILD = "2.3-PYTHON-ORCHESTRATED-ANALYTICAL-SECTIONS"
+CIO_AI_VERSION = "2.3.1"
+CIO_AI_BUILD = "2.3.1-FINAL-ANSWER-CHANNEL-SECTIONS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -366,8 +366,8 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.2.1",
-        "architecture": "COMPACT_CONTRACT_FIRST_FUNCTIONAL_INTEGRATION",
+        "contract_version": "2.3.1",
+        "architecture": "PYTHON_ORCHESTRATED_FINAL_ANSWER_INTEGRATION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
@@ -528,7 +528,7 @@ FONTE AUTORIZADA
 
 REGRAS
 ======
-- Retorne SOMENTE o texto final desta etapa, sem título, JSON, Markdown, prefácio ou raciocínio intermediário.
+- Retorne SOMENTE o parágrafo final pronto para publicação, sem título, JSON, Markdown, prefácio, notas, análise do pedido ou raciocínio intermediário.\n- Comece diretamente pela afirmação analítica; não use frases como "preciso", "devemos", "vou", "a tarefa", "o usuário pediu", "analisando" ou equivalentes metadiscursivos.\n- Termine o parágrafo de forma completa; não deixe frase, enumeração ou raciocínio em aberto.
 - Não altere fatos de origem.
 - Não crie ticker, sinal, score, ranking, indicador ou status.
 - Não invente causalidade.
@@ -563,6 +563,21 @@ def _clean_section_text(text: str, field: str) -> str:
     if lowered.startswith("```") or lowered.startswith("{") or lowered.startswith("["):
         raise CIOAIResponseError(
             f"Formato inválido na etapa {field}: era esperado texto analítico final."
+        )
+
+    meta_prefixes = (
+        "we need", "i need", "i should", "let me", "the task", "the user",
+        "preciso", "devo", "vou ", "a tarefa", "o usuário", "analisando",
+    )
+    if lowered.startswith(meta_prefixes):
+        raise CIOAIResponseError(
+            f"Resposta metadiscursiva na etapa {field}; era esperado somente texto final."
+        )
+
+    # Sinal técnico simples de truncamento: a resposta final deve terminar como prosa completa.
+    if cleaned[-1] not in ".!?)]}":
+        raise CIOAIResponseError(
+            f"Resposta possivelmente truncada na etapa {field}: término incompleto."
         )
 
     return cleaned
@@ -623,13 +638,19 @@ def _build_nvidia_client(api_key: Optional[str] = None):
 
 
 def _extract_response_text(completion: Any) -> str:
+    """
+    Extrai somente a resposta final destinada ao usuário.
+    Campos de reasoning, quando presentes no provider, nunca entram no relatório.
+    """
     try:
-        content = completion.choices[0].message.content
+        message = completion.choices[0].message
+        content = message.content
     except Exception as exc:
         raise CIOAIResponseError("Formato inesperado de resposta da NVIDIA NIM.") from exc
 
     if not isinstance(content, str) or not content.strip():
-        raise CIOAIResponseError("A NVIDIA NIM retornou resposta textual vazia ou inválida.")
+        raise CIOAIResponseError("A NVIDIA NIM retornou resposta final vazia ou inválida.")
+
     return content.strip()
 
 
@@ -647,6 +668,7 @@ def _request_nvidia_analysis(
     prompt: str,
     model: str,
     max_503_retries: int = 2,
+    max_tokens: int = 900,
 ) -> str:
     last_exc: Optional[Exception] = None
 
@@ -660,7 +682,7 @@ def _request_nvidia_analysis(
                 ],
                 temperature=0.10,
                 top_p=0.9,
-                max_tokens=3000,
+                max_tokens=max_tokens,
             )
             return _extract_response_text(completion)
         except Exception as exc:
@@ -672,13 +694,45 @@ def _request_nvidia_analysis(
     raise CIOAIResponseError(f"Falha na NVIDIA NIM: {last_exc}")
 
 
+
+def _request_final_section(
+    client: Any,
+    contract: Dict[str, Any],
+    field: str,
+    model: str,
+    prior_sections: Optional[Dict[str, str]] = None,
+) -> str:
+    """
+    Solicita uma peça final curta. Uma segunda tentativa é permitida somente
+    quando a resposta não satisfaz o contrato técnico de apresentação.
+    """
+    prompt = _build_section_prompt(contract, field, prior_sections=prior_sections)
+    raw = _request_nvidia_analysis(client, prompt, model, max_tokens=900)
+
+    try:
+        return _clean_section_text(raw, field)
+    except CIOAIResponseError as first_error:
+        retry_prompt = (
+            prompt
+            + "\n\nCORREÇÃO DE APRESENTAÇÃO\n"
+            + "A resposta anterior não era um parágrafo final publicável. "
+              "Reescreva do zero e entregue somente o parágrafo final completo. "
+              "Não descreva seu raciocínio nem a tarefa. "
+            + f"Erro técnico: {first_error}"
+        )
+        retry_raw = _request_nvidia_analysis(
+            client, retry_prompt, model, max_tokens=900
+        )
+        return _clean_section_text(retry_raw, field)
+
+
 def run_cio_ai(
     raw_input: Dict[str, Any],
     api_key: Optional[str] = None,
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3:
+    V2.3.1:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) integração e conclusão recebem conjuntamente as quatro camadas;
@@ -694,9 +748,9 @@ def run_cio_ai(
 
     # Primeiro: leituras funcionais locais.
     for field in ("scenario", "risk", "micro_us", "micro_br"):
-        prompt = _build_section_prompt(contract, field)
-        raw_text = _request_nvidia_analysis(client, prompt, selected_model)
-        analysis[field] = _clean_section_text(raw_text, field)
+        analysis[field] = _request_final_section(
+            client, contract, field, selected_model
+        )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Depois: integração real das quatro camadas, apoiada pelas sínteses anteriores,
@@ -705,14 +759,12 @@ def run_cio_ai(
         key: analysis[key]
         for key in ("scenario", "risk", "micro_us", "micro_br")
     }
-    prompt = _build_section_prompt(
+    analysis["cross_layer_integration"] = _request_final_section(
+        client,
         contract,
         "cross_layer_integration",
+        selected_model,
         prior_sections=integration_prior,
-    )
-    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
-    analysis["cross_layer_integration"] = _clean_section_text(
-        raw_text, "cross_layer_integration"
     )
     call_trace.append({"field": "cross_layer_integration", "status": "PASS"})
 
@@ -722,21 +774,19 @@ def run_cio_ai(
         **integration_prior,
         "cross_layer_integration": analysis["cross_layer_integration"],
     }
-    prompt = _build_section_prompt(
+    analysis["integrated_cio_conclusion"] = _request_final_section(
+        client,
         contract,
         "integrated_cio_conclusion",
+        selected_model,
         prior_sections=conclusion_prior,
-    )
-    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
-    analysis["integrated_cio_conclusion"] = _clean_section_text(
-        raw_text, "integrated_cio_conclusion"
     )
     call_trace.append({"field": "integrated_cio_conclusion", "status": "PASS"})
 
     # Governança fica deliberadamente depois da conclusão.
-    prompt = _build_section_prompt(contract, "governance")
-    raw_text = _request_nvidia_analysis(client, prompt, selected_model)
-    analysis["governance"] = _clean_section_text(raw_text, "governance")
+    analysis["governance"] = _request_final_section(
+        client, contract, "governance", selected_model
+    )
     call_trace.append({"field": "governance", "status": "PASS"})
 
     if not analysis["integrated_cio_conclusion"].strip():
@@ -749,7 +799,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "PYTHON_ORCHESTRATED_FUNCTIONAL_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_FINAL_ANSWER_INTEGRATION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
