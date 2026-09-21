@@ -210,6 +210,72 @@ jobs:
           run-id: ${{ steps.artifacts.outputs.copia_run_id }}
           github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
 
+      - name: Adapt COPIAULTIMOROB raw output to universal CIO schema
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from adapters.copiaultimorob_adapter import (
+              build_copiaultimorob_agent_output,
+          )
+
+          copia_dir = Path("cio_inputs/copia")
+
+          raw_candidates = list(
+              copia_dir.rglob("agent_output_raw.json")
+          )
+
+          if len(raw_candidates) != 1:
+              raise RuntimeError(
+                  "COPIAULTIMOROB: esperado exatamente 1 "
+                  f"agent_output_raw.json; encontrados: {len(raw_candidates)}"
+              )
+
+          raw_path = raw_candidates[0]
+
+          with raw_path.open("r", encoding="utf-8") as file:
+              raw_payload = json.load(file)
+
+          universal_payload = build_copiaultimorob_agent_output(
+              raw_payload
+          )
+
+          if not isinstance(universal_payload, dict):
+              raise RuntimeError(
+                  "COPIAULTIMOROB adapter retornou payload inválido."
+              )
+
+          if universal_payload.get("system_id") != "global_portfolio":
+              raise RuntimeError(
+                  "COPIAULTIMOROB adapter retornou system_id inesperado: "
+                  f"{universal_payload.get('system_id')}"
+              )
+
+          # A validação seguinte exige exatamente um JSON neste diretório.
+          # Removemos somente os JSONs baixados do artifact do COPIA.
+          for json_path in copia_dir.rglob("*.json"):
+              json_path.unlink()
+
+          universal_path = (
+              copia_dir / "global_portfolio_agent_output.json"
+          )
+
+          with universal_path.open("w", encoding="utf-8") as file:
+              json.dump(
+                  universal_payload,
+                  file,
+                  ensure_ascii=False,
+                  indent=2,
+                  default=str,
+              )
+
+          print("COPIAULTIMOROB adaptado para o contrato universal.")
+          print("Origem:", raw_path)
+          print("Saída:", universal_path)
+          print("System ID:", universal_payload.get("system_id"))
+          PY
+
       # ======================================================
       # 9. DOWNLOAD — US EQUITIES
       # ======================================================
