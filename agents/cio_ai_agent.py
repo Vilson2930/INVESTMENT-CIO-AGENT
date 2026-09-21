@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.8"
-CIO_AI_BUILD = "2.3.8-FACT-GROUNDED-RENDERING"
+CIO_AI_VERSION = "2.3.9"
+CIO_AI_BUILD = "2.3.9-DETERMINISTIC-RELATION-GROUNDING"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -407,6 +407,21 @@ def build_comparison_evidence(systems: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 for system_id, signals in signal_sets.items()
             }
 
+    # Sobreposição de universo também é relação factual e, portanto, é calculada
+    # deterministicamente. O LLM não deve inferir interseções de conjuntos.
+    system_ids = list(by_system)
+    pairwise_overlaps: Dict[str, Any] = {}
+    for i, left in enumerate(system_ids):
+        left_tickers = set(by_system[left])
+        for right in system_ids[i + 1:]:
+            overlap = sorted(left_tickers & set(by_system[right]))
+            pair_key = f"{left}__x__{right}"
+            pairwise_overlaps[pair_key] = {
+                "systems": [left, right],
+                "overlap_count": len(overlap),
+                "overlap_tickers": overlap,
+            }
+
     return {
         "rule": (
             "Alinhamento/convergência de sinal só pode ser afirmado para tickers "
@@ -417,6 +432,7 @@ def build_comparison_evidence(systems: Dict[str, Dict[str, Any]]) -> Dict[str, A
         "common_tickers": common,
         "literal_signal_matches": literal_matches,
         "literal_signal_divergences": divergences,
+        "pairwise_ticker_overlaps": pairwise_overlaps,
     }
 
 
@@ -451,7 +467,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.8",
+        "contract_version": "2.3.9",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -517,6 +533,9 @@ def build_micro_us_fact_block(contract: Dict[str, Any]) -> Dict[str, Any]:
         "literal_signal_divergence_count": len(divergences),
         "literal_signal_matches": _clone(matches),
         "literal_signal_divergences": _clone(divergences),
+        "pairwise_ticker_overlaps": _clone(
+            _safe_dict(evidence.get("pairwise_ticker_overlaps"))
+        ),
         "rule": evidence.get("rule"),
     }
 
@@ -551,6 +570,21 @@ def render_micro_us_fact_block(contract: Dict[str, Any]) -> str:
             lines.append(f"- {ticker}: " + "; ".join(parts))
     else:
         lines.append("Divergências literais confirmadas: nenhuma.")
+
+    overlaps = block["pairwise_ticker_overlaps"]
+    micro_us_ids = {"us_equities", "ai_infrastructure", "growth"}
+    lines.append("Sobreposição de tickers entre sistemas MICRO_US:")
+    for pair_key in sorted(overlaps):
+        item = overlaps[pair_key]
+        systems = item.get("systems", [])
+        if len(systems) != 2 or not set(systems).issubset(micro_us_ids):
+            continue
+        tickers = item.get("overlap_tickers", [])
+        ticker_text = ", ".join(tickers) if tickers else "nenhuma"
+        lines.append(
+            f"- {systems[0]} x {systems[1]}: "
+            f"{item.get('overlap_count', 0)} ticker(s) comum(ns): {ticker_text}."
+        )
 
     return "\n".join(lines)
 
@@ -619,8 +653,9 @@ def _build_section_prompt(
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
             "Interprete somente o padrão agregado. NÃO escreva pares ticker/signal, NÃO conte "
-            "divergências e NÃO reconstrua listas factuais: esses itens serão renderizados "
-            "deterministicamente pelo Python a partir de comparison_evidence. "
+            "divergências e NÃO reconstrua listas factuais. NÃO infira sobreposição, ausência de "
+            "sobreposição ou interseção de tickers entre sistemas: essas relações são calculadas "
+            "e renderizadas deterministicamente pelo Python a partir de comparison_evidence. "
             "Ao falar em alinhamento ou convergência, respeite exclusivamente o estado agregado "
             "de comparison_evidence.literal_signal_matches."
         ),
@@ -629,7 +664,7 @@ def _build_section_prompt(
             "trate a relação como contexto regional quando não houver dimensão diretamente comparável."
         ),
         "cross_layer_integration": (
-            "Integre as quatro camadas usando SOMENTE authorized_relations. Para MICRO_US, use apenas o estado agregado de comparison_evidence; NÃO reenumere nem reconstrua pares ticker/signal. "
+            "Integre as quatro camadas usando SOMENTE authorized_relations. Para MICRO_US, use apenas o estado agregado de comparison_evidence; NÃO reenumere nem reconstrua pares ticker/signal e NÃO infira sobreposição ou ausência de sobreposição de tickers. "
             "Explique coexistências, tensões, heterogeneidade ou seletividade sustentadas pelos fatos. "
             "Não transforme a integração em recomendação."
         ),
@@ -893,7 +928,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.8:
+    V2.3.9:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) a integração recebe as quatro camadas completas;
@@ -976,7 +1011,9 @@ def run_cio_ai(
         "source_data_changed": False,
         "fact_grounding": {
             "micro_us_ticker_signal_rendering": "DETERMINISTIC_PYTHON",
+            "micro_us_pairwise_overlap_rendering": "DETERMINISTIC_PYTHON",
             "llm_reconstruction_of_micro_us_ticker_signal_pairs": False,
+            "llm_inference_of_micro_us_ticker_overlaps": False,
             "sampling_temperature": 0.0,
             "sampling_top_p": 1.0,
         },
