@@ -27,8 +27,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.6"
-CIO_AI_BUILD = "2.3.6-FINAL-LANGUAGE-CLEANUP"
+CIO_AI_VERSION = "2.3.7"
+CIO_AI_BUILD = "2.3.7-FINAL-CIO-SYNTHESIS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -454,7 +454,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.6",
+        "contract_version": "2.3.7",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -600,7 +600,7 @@ def _build_section_prompt(
         "micro_us": 140,
         "micro_br": 140,
         "cross_layer_integration": 180,
-        "integrated_cio_conclusion": 110,
+        "integrated_cio_conclusion": 60,
         "governance": 80,
     }
 
@@ -625,6 +625,7 @@ def _build_section_prompt(
             "\n- Priorize a característica dominante do conjunto e as tensões que qualificam essa leitura."
             "\n- Não faça inventário de tickers, sinais, contagens ou resultados individuais já descritos nas seções anteriores."
             "\n- A seção 5 é a evidência analítica imediata desta conclusão; sintetize-a, não a reproduza."
+            "\n- Entregue somente a leitura dominante do conjunto e, no máximo, a principal tensão que a qualifica."
             "\n- Não transforme ausência de convergência micro em conclusão de ausência de cenário."
         )
 
@@ -852,7 +853,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.6:
+    V2.3.7:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) a integração recebe as quatro camadas completas;
