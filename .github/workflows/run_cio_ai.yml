@@ -42,6 +42,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install openai
+          pip install reportlab
 
       # ======================================================
       # 4. SEGURANÇA
@@ -526,7 +527,223 @@ jobs:
           PY
 
       # ======================================================
-      # 16. PUBLICAR RESULTADO FINAL
+      # 16. GERAR PDF DA EXECUÇÃO ATUAL
+      # ======================================================
+
+      - name: Generate CIO PDF report
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from reportlab.lib import colors
+          from reportlab.lib.enums import TA_CENTER
+          from reportlab.lib.pagesizes import A4
+          from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+          from reportlab.lib.units import cm
+          from reportlab.platypus import (
+              SimpleDocTemplate, Paragraph, Spacer, PageBreak
+          )
+          from xml.sax.saxutils import escape
+          import re
+
+          report_path = Path("cio_ai_output/investment_cio_ai_report.txt")
+          pdf_path = Path("cio_ai_output/investment_cio_ai_report.pdf")
+
+          if not report_path.exists():
+              raise RuntimeError(f"Relatório TXT não encontrado: {report_path}")
+
+          report = report_path.read_text(encoding="utf-8").strip()
+          if not report:
+              raise RuntimeError("Relatório CIO vazio; PDF não será gerado.")
+
+          styles = getSampleStyleSheet()
+          title = ParagraphStyle(
+              "CIOTitle",
+              parent=styles["Title"],
+              fontName="Helvetica-Bold",
+              fontSize=18,
+              leading=22,
+              alignment=TA_CENTER,
+              spaceAfter=14,
+          )
+          subtitle = ParagraphStyle(
+              "CIOSubtitle",
+              parent=styles["Normal"],
+              fontName="Helvetica",
+              fontSize=9,
+              leading=12,
+              alignment=TA_CENTER,
+              textColor=colors.HexColor("#555555"),
+              spaceAfter=18,
+          )
+          heading = ParagraphStyle(
+              "CIOHeading",
+              parent=styles["Heading2"],
+              fontName="Helvetica-Bold",
+              fontSize=12,
+              leading=15,
+              spaceBefore=10,
+              spaceAfter=6,
+          )
+          body = ParagraphStyle(
+              "CIOBody",
+              parent=styles["BodyText"],
+              fontName="Helvetica",
+              fontSize=9.5,
+              leading=13,
+              spaceAfter=6,
+          )
+          fact = ParagraphStyle(
+              "CIOFact",
+              parent=body,
+              fontName="Helvetica",
+              leftIndent=10,
+              firstLineIndent=-5,
+          )
+
+          doc = SimpleDocTemplate(
+              str(pdf_path),
+              pagesize=A4,
+              rightMargin=1.7 * cm,
+              leftMargin=1.7 * cm,
+              topMargin=1.7 * cm,
+              bottomMargin=1.7 * cm,
+              title="Investment CIO AI - Relatório Integrado",
+              author="Investment CIO AI",
+          )
+
+          story = [
+              Paragraph("INVESTMENT CIO AI", title),
+              Paragraph(
+                  "Relatório integrado da execução atual dos 7 sistemas oficiais",
+                  subtitle,
+              ),
+          ]
+
+          section_re = re.compile(r"^\d+\.\s+.+")
+          for raw in report.splitlines():
+              line = raw.strip()
+              if not line:
+                  story.append(Spacer(1, 5))
+                  continue
+
+              safe = escape(line)
+
+              if section_re.match(line) or line == "FATOS DETERMINÍSTICOS — FONTE DE VERDADE":
+                  story.append(Paragraph(safe, heading))
+              elif line.startswith("- "):
+                  story.append(Paragraph("• " + escape(line[2:]), fact))
+              else:
+                  story.append(Paragraph(safe, body))
+
+          doc.build(story)
+
+          if not pdf_path.exists() or pdf_path.stat().st_size == 0:
+              raise RuntimeError("Falha ao gerar o PDF do CIO.")
+
+          print(f"PDF gerado: {pdf_path} ({pdf_path.stat().st_size} bytes)")
+          PY
+
+      # ======================================================
+      # 17. ENVIAR E-MAIL DA EXECUÇÃO ATUAL
+      # ======================================================
+
+      - name: Send CIO report by email
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          import html
+          from pathlib import Path
+          from email.message import EmailMessage
+          from email.utils import formatdate
+
+          smtp_user = os.environ.get("SMTP_USER", "").strip()
+          smtp_password = os.environ.get("SMTP_PASSWORD", "").replace(" ", "").strip()
+          email_to = os.environ.get("EMAIL_TO", "").strip()
+
+          if not smtp_user:
+              raise RuntimeError("SMTP_USER não configurado.")
+          if not smtp_password:
+              raise RuntimeError("SMTP_PASSWORD não configurado.")
+          if not email_to:
+              raise RuntimeError("EMAIL_TO não configurado.")
+
+          report_path = Path("cio_ai_output/investment_cio_ai_report.txt")
+          pdf_path = Path("cio_ai_output/investment_cio_ai_report.pdf")
+
+          if not report_path.exists():
+              raise RuntimeError("Relatório TXT da execução atual não encontrado.")
+          if not pdf_path.exists():
+              raise RuntimeError("PDF da execução atual não encontrado.")
+
+          report = report_path.read_text(encoding="utf-8").strip()
+          if not report:
+              raise RuntimeError("Relatório CIO vazio; e-mail não será enviado.")
+
+          recipients = [
+              item.strip()
+              for item in email_to.replace(";", ",").split(",")
+              if item.strip()
+          ]
+          if not recipients:
+              raise RuntimeError("EMAIL_TO não contém destinatário válido.")
+
+          msg = EmailMessage()
+          msg["Subject"] = "Investment CIO AI V2.4.1 - Relatório Integrado"
+          msg["From"] = smtp_user
+          msg["To"] = ", ".join(recipients)
+          msg["Date"] = formatdate(localtime=True)
+
+          msg.set_content(
+              "INVESTMENT CIO AI V2.4.1\n\n"
+              + report
+              + "\n\nPDF completo desta mesma execução em anexo.\n"
+              + "Execução em corretora: NÃO\n"
+              + "Decisão final humana: SIM\n"
+          )
+
+          html_report = html.escape(report).replace("\n", "<br>\n")
+          msg.add_alternative(
+              f"""\
+              <html>
+                <body style="font-family:Arial,sans-serif;line-height:1.5;color:#222;">
+                  <h2>Investment CIO AI V2.4.1</h2>
+                  <p><strong>Relatório integrado dos 7 sistemas - execução atual</strong></p>
+                  <div style="padding:16px;border:1px solid #ddd;border-radius:8px;">
+                    {html_report}
+                  </div>
+                  <p style="margin-top:18px;">
+                    <strong>PDF completo desta mesma execução em anexo.</strong><br>
+                    Execução em corretora: NÃO<br>
+                    Decisão final humana: SIM
+                  </p>
+                </body>
+              </html>
+              """,
+              subtype="html",
+          )
+
+          msg.add_attachment(
+              pdf_path.read_bytes(),
+              maintype="application",
+              subtype="pdf",
+              filename="investment_cio_ai_report.pdf",
+          )
+
+          with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+              smtp.login(smtp_user, smtp_password)
+              smtp.send_message(msg)
+
+          print("E-mail CIO enviado com sucesso.")
+          print("Anexo:", pdf_path)
+          PY
+
+      # ======================================================
+      # 18. PUBLICAR RESULTADO FINAL
       # ======================================================
 
       - name: Upload Investment CIO AI result
