@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.9"
-CIO_AI_BUILD = "2.3.9-DETERMINISTIC-RELATION-GROUNDING"
+CIO_AI_VERSION = "2.4.0"
+CIO_AI_BUILD = "2.4.0-DETERMINISTIC-FACTS-AI-SYNTHESIS"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -407,16 +407,13 @@ def build_comparison_evidence(systems: Dict[str, Dict[str, Any]]) -> Dict[str, A
                 for system_id, signals in signal_sets.items()
             }
 
-    # Sobreposição de universo também é relação factual e, portanto, é calculada
-    # deterministicamente. O LLM não deve inferir interseções de conjuntos.
     system_ids = list(by_system)
     pairwise_overlaps: Dict[str, Any] = {}
     for i, left in enumerate(system_ids):
         left_tickers = set(by_system[left])
         for right in system_ids[i + 1:]:
             overlap = sorted(left_tickers & set(by_system[right]))
-            pair_key = f"{left}__x__{right}"
-            pairwise_overlaps[pair_key] = {
+            pairwise_overlaps[f"{left}__x__{right}"] = {
                 "systems": [left, right],
                 "overlap_count": len(overlap),
                 "overlap_tickers": overlap,
@@ -467,7 +464,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.9",
+        "contract_version": "2.4.0",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -517,76 +514,104 @@ def _compact_json(value: Any) -> str:
 
 
 
-def build_micro_us_fact_block(contract: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Bloco factual determinístico para MICRO_US.
 
-    O LLM não reconstrói ticker -> signal nem contagens de convergência/divergência.
-    Esses fatos são derivados exclusivamente de comparison_evidence já calculado em Python.
+def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Camada factual computada exclusivamente pelo Python.
+
+    O LLM não conta, não intersecta conjuntos, não associa ticker a signal
+    e não reconstrói relações literais entre sistemas.
     """
     evidence = _safe_dict(contract.get("comparison_evidence"))
-    matches = _safe_dict(evidence.get("literal_signal_matches"))
-    divergences = _safe_dict(evidence.get("literal_signal_divergences"))
+    layers = _safe_dict(contract.get("layers"))
 
     return {
-        "literal_signal_match_count": len(matches),
-        "literal_signal_divergence_count": len(divergences),
-        "literal_signal_matches": _clone(matches),
-        "literal_signal_divergences": _clone(divergences),
+        "systems_count": len(OFFICIAL_SYSTEMS),
+        "layer_system_counts": {
+            layer: len(items) if isinstance(items, list) else 0
+            for layer, items in layers.items()
+        },
+        "literal_signal_match_count": len(
+            _safe_dict(evidence.get("literal_signal_matches"))
+        ),
+        "literal_signal_divergence_count": len(
+            _safe_dict(evidence.get("literal_signal_divergences"))
+        ),
+        "literal_signal_matches": _clone(
+            _safe_dict(evidence.get("literal_signal_matches"))
+        ),
+        "literal_signal_divergences": _clone(
+            _safe_dict(evidence.get("literal_signal_divergences"))
+        ),
         "pairwise_ticker_overlaps": _clone(
             _safe_dict(evidence.get("pairwise_ticker_overlaps"))
         ),
-        "rule": evidence.get("rule"),
+        "comparison_rule": evidence.get("rule"),
     }
 
 
-def render_micro_us_fact_block(contract: Dict[str, Any]) -> str:
-    """
-    Renderiza os pares ticker/sinal diretamente em Python.
-    Nenhum ticker ou signal desta peça é gerado pelo modelo.
-    """
-    block = build_micro_us_fact_block(contract)
-    matches = block["literal_signal_matches"]
-    divergences = block["literal_signal_divergences"]
+def render_deterministic_fact_layer(contract: Dict[str, Any]) -> str:
+    facts = build_deterministic_fact_layer(contract)
+    lines = [
+        f"Sistemas oficiais: {facts['systems_count']}.",
+        "Sistemas por camada: "
+        + ", ".join(
+            f"{layer}={count}"
+            for layer, count in facts["layer_system_counts"].items()
+        )
+        + ".",
+        f"Convergências literais de sinal: {facts['literal_signal_match_count']}.",
+        f"Divergências literais de sinal: {facts['literal_signal_divergence_count']}.",
+    ]
 
-    lines = []
-    if matches:
-        lines.append("Convergências literais confirmadas:")
-        for ticker in sorted(matches):
-            item = matches[ticker]
-            systems = ", ".join(item.get("systems", []))
-            signals = " | ".join(item.get("shared_literal_signals", []))
-            lines.append(f"- {ticker}: {signals} [{systems}]")
-    else:
-        lines.append("Convergências literais confirmadas: nenhuma.")
+    matches = facts["literal_signal_matches"]
+    for ticker in sorted(matches):
+        item = matches[ticker]
+        systems = ", ".join(item.get("systems", []))
+        signals = " | ".join(item.get("shared_literal_signals", []))
+        lines.append(f"- CONVERGÊNCIA {ticker}: {signals} [{systems}]")
 
-    if divergences:
-        lines.append(f"Divergências literais confirmadas: {len(divergences)}.")
-        for ticker in sorted(divergences):
-            system_map = divergences[ticker]
-            parts = []
-            for system_id, signals in system_map.items():
-                parts.append(f"{system_id}=" + " | ".join(signals))
-            lines.append(f"- {ticker}: " + "; ".join(parts))
-    else:
-        lines.append("Divergências literais confirmadas: nenhuma.")
+    divergences = facts["literal_signal_divergences"]
+    for ticker in sorted(divergences):
+        system_map = divergences[ticker]
+        parts = [
+            f"{system_id}=" + " | ".join(signals)
+            for system_id, signals in system_map.items()
+        ]
+        lines.append(f"- DIVERGÊNCIA {ticker}: " + "; ".join(parts))
 
-    overlaps = block["pairwise_ticker_overlaps"]
-    micro_us_ids = {"us_equities", "ai_infrastructure", "growth"}
-    lines.append("Sobreposição de tickers entre sistemas MICRO_US:")
-    for pair_key in sorted(overlaps):
-        item = overlaps[pair_key]
+    micro_us = {"us_equities", "ai_infrastructure", "growth"}
+    micro_br = {"b3_equities", "fii"}
+    for pair_key in sorted(facts["pairwise_ticker_overlaps"]):
+        item = facts["pairwise_ticker_overlaps"][pair_key]
         systems = item.get("systems", [])
-        if len(systems) != 2 or not set(systems).issubset(micro_us_ids):
+        if len(systems) != 2:
+            continue
+        pair = set(systems)
+        if not (pair.issubset(micro_us) or pair.issubset(micro_br)):
             continue
         tickers = item.get("overlap_tickers", [])
         ticker_text = ", ".join(tickers) if tickers else "nenhuma"
         lines.append(
-            f"- {systems[0]} x {systems[1]}: "
-            f"{item.get('overlap_count', 0)} ticker(s) comum(ns): {ticker_text}."
+            f"- SOBREPOSIÇÃO {systems[0]} x {systems[1]}: "
+            f"{item.get('overlap_count', 0)} ticker(s): {ticker_text}."
         )
 
     return "\n".join(lines)
+
+
+def build_ai_synthesis_source(contract: Dict[str, Any], factual_sections: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Fonte reduzida para a IA: fatos já consolidados + relações autorizadas.
+    A IA recebe o significado factual pronto e executa somente síntese.
+    """
+    return {
+        "deterministic_facts": build_deterministic_fact_layer(contract),
+        "authorized_relations": _clone(contract.get("authorized_relations", [])),
+        "conclusion_contract": _clone(_safe_dict(contract.get("conclusion_contract"))),
+        "factual_sections": _clone(factual_sections),
+    }
+
 
 def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
     """
@@ -652,20 +677,18 @@ def _build_section_prompt(
         ),
         "micro_us": (
             "Produza uma leitura conjunta da camada MICRO_US. Os sistemas não são votos. "
-            "Interprete somente o padrão agregado. NÃO escreva pares ticker/signal, NÃO conte "
-            "divergências e NÃO reconstrua listas factuais. NÃO infira sobreposição, ausência de "
-            "sobreposição ou interseção de tickers entre sistemas: essas relações são calculadas "
-            "e renderizadas deterministicamente pelo Python a partir de comparison_evidence. "
-            "Ao falar em alinhamento ou convergência, respeite exclusivamente o estado agregado "
-            "de comparison_evidence.literal_signal_matches."
+            "Interprete somente o padrão agregado. NÃO escreva pares ticker/signal, NÃO conte, "
+            "NÃO intersecte conjuntos e NÃO reconstrua listas ou relações factuais. "
+            "Esses fatos pertencem exclusivamente à camada determinística do Python."
         ),
         "micro_br": (
             "Produza uma leitura conjunta da camada MICRO_BR. B3 e FII são classes diferentes; "
             "trate a relação como contexto regional quando não houver dimensão diretamente comparável."
         ),
         "cross_layer_integration": (
-            "Integre as quatro camadas usando SOMENTE authorized_relations. Para MICRO_US, use apenas o estado agregado de comparison_evidence; NÃO reenumere nem reconstrua pares ticker/signal e NÃO infira sobreposição ou ausência de sobreposição de tickers. "
-            "Explique coexistências, tensões, heterogeneidade ou seletividade sustentadas pelos fatos. "
+            "Integre as quatro camadas usando SOMENTE authorized_relations e as sínteses factuais já fornecidas. "
+            "NÃO calcule contagens, NÃO intersecte conjuntos, NÃO reconstrua ticker/signal e NÃO crie nova relação factual. "
+            "Explique somente o significado conjunto dos fatos já consolidados: coexistências, tensões, heterogeneidade ou seletividade. "
             "Não transforme a integração em recomendação."
         ),
         "integrated_cio_conclusion": (
@@ -928,7 +951,7 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.9:
+    V2.4.0:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
     3) a integração recebe as quatro camadas completas;
@@ -948,10 +971,15 @@ def run_cio_ai(
         analysis[field] = _request_final_section(
             client, contract, field, selected_model
         )
-        if field == "micro_us":
-            deterministic_micro_us = render_micro_us_fact_block(contract)
-            analysis[field] = analysis[field].rstrip() + "\n\n" + deterministic_micro_us
         call_trace.append({"field": field, "status": "PASS"})
+
+    # Camada factual determinística: números, relações, ticker/signal e interseções.
+    deterministic_facts_text = render_deterministic_fact_layer(contract)
+    analysis["micro_us"] = (
+        analysis["micro_us"].rstrip()
+        + "\n\nFATOS DETERMINÍSTICOS — FONTE DE VERDADE\n"
+        + deterministic_facts_text
+    )
 
     # Depois: integração real das quatro camadas, apoiada pelas sínteses anteriores,
     # mas sempre com os payloads completos e authorized_relations disponíveis.
@@ -959,9 +987,13 @@ def run_cio_ai(
         key: analysis[key]
         for key in ("scenario", "risk", "micro_us", "micro_br")
     }
+    synthesis_source = build_ai_synthesis_source(contract, integration_prior)
+    synthesis_contract = _clone(contract)
+    synthesis_contract["layers"] = {}
+    synthesis_contract["comparison_evidence"] = synthesis_source["deterministic_facts"]
     analysis["cross_layer_integration"] = _request_final_section(
         client,
-        contract,
+        synthesis_contract,
         "cross_layer_integration",
         selected_model,
         prior_sections=integration_prior,
@@ -1010,10 +1042,13 @@ def run_cio_ai(
         "structural_validation": structural_validation,
         "source_data_changed": False,
         "fact_grounding": {
-            "micro_us_ticker_signal_rendering": "DETERMINISTIC_PYTHON",
-            "micro_us_pairwise_overlap_rendering": "DETERMINISTIC_PYTHON",
-            "llm_reconstruction_of_micro_us_ticker_signal_pairs": False,
-            "llm_inference_of_micro_us_ticker_overlaps": False,
+            "strategy": "DETERMINISTIC_FACTS_AI_SYNTHESIS",
+            "systems_count": "DETERMINISTIC_PYTHON",
+            "ticker_signal_relations": "DETERMINISTIC_PYTHON",
+            "counts": "DETERMINISTIC_PYTHON",
+            "set_intersections": "DETERMINISTIC_PYTHON",
+            "pairwise_ticker_overlaps": "DETERMINISTIC_PYTHON",
+            "llm_role": "INTERPRETATION_AND_SYNTHESIS_ONLY",
             "sampling_temperature": 0.0,
             "sampling_top_p": 1.0,
         },
