@@ -86,37 +86,44 @@ jobs:
           import os
           import urllib.request
 
-          repo = "Vilson2930/INVESTMENT-CIO-AGENT"
+          central_repo = "Vilson2930/INVESTMENT-CIO-AGENT"
+          copia_repo = "Vilson2930/COPIAULTIMOROB"
           token = os.environ["GH_TOKEN"]
 
           required_artifacts = {
-              "sp500": "investment-cio-sp500-output",
-              "copia": "investment-cio-copiaultimorob-output",
-              "us_equities": "investment-cio-us-equities-output",
-              "b3_equities": "investment-cio-b3-equities-output",
-              "ai_infrastructure": "investment-cio-ai-infrastructure-output",
-              "fii": "investment-cio-fii-output",
-              "growth": "investment-cio-growth-output",
+              "sp500": ("investment-cio-sp500-output", central_repo),
+              "copia": ("investment-cio-copiaultimorob-output", copia_repo),
+              "us_equities": ("investment-cio-us-equities-output", central_repo),
+              "b3_equities": ("investment-cio-b3-equities-output", central_repo),
+              "ai_infrastructure": ("investment-cio-ai-infrastructure-output", central_repo),
+              "fii": ("investment-cio-fii-output", central_repo),
+              "growth": ("investment-cio-growth-output", central_repo),
           }
 
-          url = (
-              f"https://api.github.com/repos/{repo}/"
-              "actions/artifacts?per_page=100"
-          )
+          def list_artifacts(repo):
+              url = (
+                  f"https://api.github.com/repos/{repo}/"
+                  "actions/artifacts?per_page=100"
+              )
 
-          request = urllib.request.Request(
-              url,
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Accept": "application/vnd.github+json",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
 
-          with urllib.request.urlopen(request) as response:
-              data = json.load(response)
+              with urllib.request.urlopen(request) as response:
+                  data = json.load(response)
 
-          all_artifacts = data.get("artifacts", [])
+              return data.get("artifacts", [])
+
+          artifacts_by_repo = {
+              central_repo: list_artifacts(central_repo),
+              copia_repo: list_artifacts(copia_repo),
+          }
 
           github_output = os.environ["GITHUB_OUTPUT"]
 
@@ -131,7 +138,9 @@ jobs:
               encoding="utf-8",
           ) as output:
 
-              for key, artifact_name in required_artifacts.items():
+              for key, (artifact_name, artifact_repo) in required_artifacts.items():
+
+                  all_artifacts = artifacts_by_repo[artifact_repo]
 
                   matches = [
                       artifact
@@ -160,6 +169,7 @@ jobs:
                   print()
                   print("Sistema:", key)
                   print("Artifact:", artifact_name)
+                  print("Repositório:", artifact_repo)
                   print("Artifact ID:", artifact["id"])
                   print("Run ID:", run_id)
                   print("Criado em:", artifact.get("created_at"))
@@ -196,7 +206,7 @@ jobs:
         with:
           name: investment-cio-copiaultimorob-output
           path: cio_inputs/copia
-          repository: Vilson2930/INVESTMENT-CIO-AGENT
+          repository: Vilson2930/COPIAULTIMOROB
           run-id: ${{ steps.artifacts.outputs.copia_run_id }}
           github-token: ${{ secrets.CIO_GITHUB_TOKEN }}
 
