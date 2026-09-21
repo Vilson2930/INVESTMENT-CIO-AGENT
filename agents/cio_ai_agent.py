@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.4"
-CIO_AI_BUILD = "2.4.4-DETERMINISTIC-ALLOCATION-EVIDENCE"
+CIO_AI_VERSION = "2.4.5"
+CIO_AI_BUILD = "2.4.5-DETERMINISTIC-ALLOCATION-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.4",
+        "contract_version": "2.4.5",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -634,6 +634,43 @@ def build_deterministic_risk_diagnosis(contract: Dict[str, Any]) -> Dict[str, An
             "recomendação criada pelo CIO."
         ),
     }
+
+
+
+def render_deterministic_allocation_advisor(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as posições publicadas pelo Allocation Advisor do
+    COPIAULTIMOROB. Não recalcula pesos, desvios, ações ou prioridades.
+    """
+    diagnosis = build_deterministic_risk_diagnosis(contract)
+    positions = diagnosis.get("allocation_advisor_positions", [])
+    if not isinstance(positions, list) or not positions:
+        return ""
+
+    def _fmt(value: Any) -> str:
+        if value is None:
+            return "N/D"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return f"{value:.2f}".replace(".", ",")
+        return str(value)
+
+    lines = ["ALOCAÇÃO DETERMINÍSTICA — COPIAULTIMOROB / ALLOCATION ADVISOR"]
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+        ticker = row.get("ticker") or "N/D"
+        current = _fmt(row.get("current_weight_pct"))
+        target = _fmt(row.get("target_weight_pct"))
+        drift = _fmt(row.get("drift_pct"))
+        action = row.get("model_action") or "N/D"
+        priority = row.get("model_priority") or "N/D"
+        lines.append(
+            f"- {ticker}: peso atual {current}% | peso-alvo {target}% | "
+            f"desvio {drift}% | ação {action} | prioridade {priority}."
+        )
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
 
 
 def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
@@ -1114,6 +1151,14 @@ def run_cio_ai(
         analysis[field] = _request_final_section(
             client, contract, field, selected_model
         )
+        if field == "risk":
+            allocation_text = render_deterministic_allocation_advisor(contract)
+            if allocation_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + allocation_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1231,6 +1276,7 @@ __all__ = [
     "build_evidence_manifest",
     "build_comparison_evidence",
     "build_deterministic_risk_diagnosis",
+    "render_deterministic_allocation_advisor",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
