@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.3.4"
-CIO_AI_BUILD = "2.3.4-CIO-CONCLUSION-SYNTHESIS"
+CIO_AI_VERSION = "2.3.5"
+CIO_AI_BUILD = "2.3.5-INTEGRATION-TO-CONCLUSION"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -278,6 +278,7 @@ REGRAS INVIOLÁVEIS
 - Não transforme oportunidade em autorização para operar.
 - Não crie compra, venda, entrada, saída, espera, rebalanceamento, aumento ou redução de exposição.
 - Não crie plano de ação.
+- Não formule aconselhamento, orientação, recomendação de monitoramento ou linguagem normativa; descreva apenas o estado observado.
 - Não use governança para determinar a conclusão de cenário.
 - Não acrescente relações que não estejam no contrato.
 - Toda afirmação factual específica deve ser recuperável literalmente do payload de um dos sete sistemas.
@@ -450,8 +451,8 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.3.4",
-        "architecture": "PYTHON_ORCHESTRATED_CIO_SYNTHESIS_INTEGRATION",
+        "contract_version": "2.3.5",
+        "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
             "RISK": risk,
@@ -532,12 +533,7 @@ def _section_source(contract: Dict[str, Any], field: str) -> Dict[str, Any]:
         }
     if field == "integrated_cio_conclusion":
         return {
-            "SCENARIO": _clone(layers.get("SCENARIO", [])),
-            "RISK": _clone(layers.get("RISK", [])),
-            "MICRO_US": _clone(layers.get("MICRO_US", [])),
-            "MICRO_BR": _clone(layers.get("MICRO_BR", [])),
             "authorized_relations": _clone(relations),
-            "comparison_evidence": _clone(comparison_evidence),
             "conclusion_contract": _clone(conclusion_contract),
         }
     if field == "governance":
@@ -584,13 +580,11 @@ def _build_section_prompt(
         ),
         "integrated_cio_conclusion": (
             "Responda diretamente à pergunta de conclusion_contract em nível de síntese executiva. "
-            "Use a integração entre camadas já produzida para identificar a característica dominante "
-            "do cenário conjunto formado por SCENARIO, RISK, MICRO_US e MICRO_BR. "
-            "NÃO reenumere robôs, tickers, rankings, scores, pesos ou listas de sinais, salvo se um dado "
-            "for indispensável para sustentar a característica dominante. "
-            "Explique o que o conjunto significa, preservando tensões, heterogeneidade e seletividade "
-            "quando sustentadas. Não force consenso e não crie recomendação. "
-            "A conclusão deve ser descritiva, não prescritiva."
+            "Use como BASE ANALÍTICA a seção cross_layer_integration já produzida e grounded nas quatro camadas. "
+            "Extraia dela a característica dominante do cenário conjunto e as tensões que qualificam essa leitura. "
+            "NÃO reenumere robôs, tickers, rankings, scores, pesos, contagens ou listas de sinais. "
+            "NÃO reabra os payloads individuais nem reconstrua a análise das quatro camadas. "
+            "Não force consenso e não crie recomendação. A conclusão deve ser descritiva, não prescritiva."
         ),
         "governance": (
             "Relate somente a governança fornecida. Não use governança para modificar a conclusão analítica."
@@ -609,10 +603,16 @@ def _build_section_prompt(
 
     # Resumos já produzidos servem apenas como apoio de coerência nas etapas integrativas.
     prior_block = ""
-    if field in {"cross_layer_integration", "integrated_cio_conclusion"} and prior_sections:
+    if field == "cross_layer_integration" and prior_sections:
         prior_block = (
             "\n\nSÍNTESES ANTERIORES PARA COERÊNCIA\n"
             + _compact_json(prior_sections)
+        )
+    elif field == "integrated_cio_conclusion" and prior_sections:
+        integration_text = prior_sections.get("cross_layer_integration", "")
+        prior_block = (
+            "\n\nBASE ANALÍTICA JÁ INTEGRADA\n"
+            + _compact_json({"cross_layer_integration": integration_text})
         )
 
     conclusion_rules = ""
@@ -620,7 +620,8 @@ def _build_section_prompt(
         conclusion_rules = (
             "\n- Esta seção é uma SÍNTESE de nível superior, não uma repetição da seção de integração."
             "\n- Priorize a característica dominante do conjunto e as tensões que qualificam essa leitura."
-            "\n- Não faça inventário de tickers, sinais ou resultados individuais já descritos nas seções anteriores."
+            "\n- Não faça inventário de tickers, sinais, contagens ou resultados individuais já descritos nas seções anteriores."
+            "\n- A seção 5 é a evidência analítica imediata desta conclusão; sintetize-a, não a reproduza."
             "\n- Não transforme ausência de convergência micro em conclusão de ausência de cenário."
         )
 
@@ -643,6 +644,7 @@ REGRAS
 - Não transforme risco em ordem de reduzir exposição.
 - Não transforme oportunidade em autorização para operar.
 - Não crie compra, venda, entrada, saída, espera, rebalanceamento ou plano de ação.
+- Não formule recomendação, orientação, aconselhamento, necessidade de monitoramento ou linguagem normativa; descreva somente o estado observado.
 - Toda afirmação factual específica deve ser sustentada pela FONTE AUTORIZADA.{conclusion_rules}
 - Máximo de {limits[field]} palavras.
 """.strip()
@@ -836,11 +838,12 @@ def run_cio_ai(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    V2.3.4:
+    V2.3.5:
     1) Python preserva os sete sistemas e as quatro camadas;
     2) Python orquestra sete peças analíticas curtas, sem JSON de saída;
-    3) integração e conclusão recebem conjuntamente as quatro camadas;
-    4) Python monta deterministicamente um único relatório CIO.
+    3) a integração recebe as quatro camadas completas;
+    4) a conclusão recebe a integração já grounded, sem reabrir payloads brutos;
+    5) Python monta deterministicamente um único relatório CIO.
     """
     selected_model = model or DEFAULT_MODEL
     context = build_functional_context(raw_input)
@@ -872,10 +875,9 @@ def run_cio_ai(
     )
     call_trace.append({"field": "cross_layer_integration", "status": "PASS"})
 
-    # A conclusão é uma chamada própria e recebe as quatro camadas completas,
-    # relações autorizadas e as sínteses já produzidas. Não é votação nem soma de sinais.
+    # A conclusão é uma chamada própria de nível superior.
+    # Recebe a integração já grounded da seção 5 + contrato/relações, sem reabrir payloads brutos.
     conclusion_prior = {
-        **integration_prior,
         "cross_layer_integration": analysis["cross_layer_integration"],
     }
     analysis["integrated_cio_conclusion"] = _request_final_section(
@@ -903,7 +905,7 @@ def run_cio_ai(
         "status": "OK",
         "cio_ai_version": CIO_AI_VERSION,
         "cio_ai_build": CIO_AI_BUILD,
-        "architecture": "PYTHON_ORCHESTRATED_CIO_SYNTHESIS_INTEGRATION",
+        "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "model": selected_model,
         "generated_at": _utc_now(),
         "systems_count": len(OFFICIAL_SYSTEMS),
