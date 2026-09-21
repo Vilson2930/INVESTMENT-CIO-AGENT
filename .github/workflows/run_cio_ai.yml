@@ -358,217 +358,126 @@ jobs:
           PY
 
       # ======================================================
-      # 15. EXECUTAR ORCHESTRATOR + NVIDIA NIM
+      # 15. EXECUTAR CIO INTEGRATION ENGINE V2 + NVIDIA NIM
       # ======================================================
 
-      - name: Run Investment CIO AI
+      - name: Run CIO Integration Engine V2
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
 
-          from agents.orchestrator import orchestrate
-          from agents.cio_ai_agent import run_cio_ai
-
+          from agents.cio_ai_agent import (
+              CIO_AI_VERSION,
+              CIO_AI_BUILD,
+              DEFAULT_MODEL,
+              run_cio_ai,
+          )
 
           print("=" * 70)
           print("INVESTMENT CIO AI")
-          print("EXECUÇÃO REAL — NVIDIA NIM")
+          print("EXECUÇÃO REAL — FUNCTIONAL INTEGRATION V2 / NVIDIA NIM")
           print("=" * 70)
-
 
           system_directories = [
               ("sp500_cycle", Path("cio_inputs/sp500")),
               ("global_portfolio", Path("cio_inputs/copia")),
               ("us_equities", Path("cio_inputs/us_equities")),
               ("b3_equities", Path("cio_inputs/b3_equities")),
-              (
-                  "ai_infrastructure",
-                  Path("cio_inputs/ai_infrastructure"),
-              ),
+              ("ai_infrastructure", Path("cio_inputs/ai_infrastructure")),
               ("fii", Path("cio_inputs/fii")),
               ("growth", Path("cio_inputs/growth")),
           ]
 
-
-          outputs = []
-
+          systems = {}
 
           for expected_system_id, directory in system_directories:
-
-              files = list(
-                  directory.rglob("*.json")
-              )
+              files = list(directory.rglob("*.json"))
 
               if len(files) != 1:
                   raise RuntimeError(
-                      f"{expected_system_id}: esperado "
-                      f"exatamente 1 JSON."
+                      f"{expected_system_id}: esperado exatamente 1 JSON; "
+                      f"encontrados: {len(files)}"
                   )
 
               path = files[0]
 
-              with path.open(
-                  "r",
-                  encoding="utf-8",
-              ) as file:
+              with path.open("r", encoding="utf-8") as file:
                   payload = json.load(file)
 
-              if payload.get("system_id") != expected_system_id:
+              actual_system_id = payload.get("system_id")
+
+              if actual_system_id != expected_system_id:
                   raise RuntimeError(
-                      f"System ID inesperado: "
-                      f"{payload.get('system_id')}"
+                      f"System ID inesperado em {path}: "
+                      f"esperado={expected_system_id}, "
+                      f"recebido={actual_system_id}"
                   )
 
-              outputs.append(
-                  payload
-              )
+              systems[expected_system_id] = payload
+              print(f"Carregado: {expected_system_id}")
 
-              print(
-                  f"Carregado: {expected_system_id}"
-              )
-
-
-          if len(outputs) != 7:
+          if len(systems) != 7:
               raise RuntimeError(
-                  "A execução exige exatamente "
-                  "os sete sistemas."
+                  "A execução exige exatamente os sete sistemas."
               )
 
-
-          # ==================================================
-          # ORCHESTRATOR
-          # ==================================================
-
-          print()
-          print("Executando Orchestrator V1...")
-
-          orchestrator_result = orchestrate(
-              outputs
-          )
-
-          if not isinstance(
-              orchestrator_result,
-              dict,
-          ):
-              raise RuntimeError(
-                  "Orchestrator retornou "
-                  "resultado inválido."
-              )
-
-
-          required_stages = {
-              "synthesis",
-              "risk",
-              "decision",
-              "executive_report",
+          # A V2 recebe diretamente os fatos dos sete especialistas.
+          # O Orchestrator V1 deixa de participar da conclusão CIO.
+          functional_input = {
+              "systems": systems,
+              "governance": {
+                  "broker_execution_allowed": False,
+                  "human_decision_required": True,
+              },
           }
 
-          missing_stages = [
-              stage
-              for stage in required_stages
-              if stage not in orchestrator_result
-          ]
-
-          if missing_stages:
-              raise RuntimeError(
-                  "Orchestrator não retornou todas "
-                  f"as etapas obrigatórias: {missing_stages}"
-              )
-
-          print(
-              "Orchestrator concluído."
-          )
-
-
-          # ==================================================
-          # NVIDIA NIM / NEMOTRON
-          # ==================================================
-
           print()
-          print(
-              "Executando CIO AI Agent V1..."
-          )
+          print(f"Executando CIO Integration Engine V{CIO_AI_VERSION}...")
+          print("Build:", CIO_AI_BUILD)
+          print("Provider: NVIDIA NIM")
+          print("Modelo:", DEFAULT_MODEL)
+          print("Arquitetura: FUNCTIONAL_INTEGRATION")
+          print("Orchestrator V1: NÃO UTILIZADO")
 
-          print(
-              "Provider: NVIDIA NIM"
-          )
+          cio_result = run_cio_ai(functional_input)
 
-          print(
-              "Modelo: "
-              "nvidia/nemotron-3-super-120b-a12b"
-          )
-
-
-          cio_result = run_cio_ai(
-              orchestrator_result
-          )
-
-
-          if not isinstance(
-              cio_result,
-              dict,
-          ):
+          if not isinstance(cio_result, dict):
               raise RuntimeError(
-                  "CIO AI retornou resultado inválido."
+                  "CIO Integration Engine retornou resultado inválido."
               )
 
+          analysis = cio_result.get("analysis")
 
-          analysis = cio_result.get(
-              "analysis"
-          )
-
-          if not isinstance(
-              analysis,
-              str,
-          ) or not analysis.strip():
+          if not isinstance(analysis, str) or not analysis.strip():
               raise RuntimeError(
-                  "NVIDIA NIM retornou análise vazia."
+                  "CIO Integration Engine retornou análise vazia."
               )
 
-
-          # ==================================================
-          # SALVAR RESULTADOS
-          # ==================================================
-
-          output_directory = Path(
-              "cio_ai_output"
-          )
-
-          output_directory.mkdir(
-              parents=True,
-              exist_ok=True,
-          )
-
-
-          orchestrator_file = (
-              output_directory
-              / "orchestrator_result.json"
-          )
+          output_directory = Path("cio_ai_output")
+          output_directory.mkdir(parents=True, exist_ok=True)
 
           cio_json_file = (
-              output_directory
-              / "investment_cio_ai_result.json"
+              output_directory / "investment_cio_ai_result.json"
           )
-
           cio_report_file = (
-              output_directory
-              / "investment_cio_ai_report.txt"
+              output_directory / "investment_cio_ai_report.txt"
+          )
+          integration_input_file = (
+              output_directory / "functional_integration_input.json"
           )
 
-
-          with orchestrator_file.open(
+          with integration_input_file.open(
               "w",
               encoding="utf-8",
           ) as file:
               json.dump(
-                  orchestrator_result,
+                  functional_input,
                   file,
                   ensure_ascii=False,
                   indent=2,
                   default=str,
               )
-
 
           with cio_json_file.open(
               "w",
@@ -582,107 +491,37 @@ jobs:
                   default=str,
               )
 
-
           with cio_report_file.open(
               "w",
               encoding="utf-8",
           ) as file:
-              file.write(
-                  analysis
-              )
-
-
-          # ==================================================
-          # RESUMO DA EXECUÇÃO
-          # ==================================================
-
-          summary = cio_result.get(
-              "context_summary",
-              {},
-          )
-
+              file.write(analysis)
 
           print()
           print("=" * 70)
-          print(
-              "INVESTMENT CIO AI — "
-              "EXECUÇÃO CONCLUÍDA"
-          )
+          print("INVESTMENT CIO AI V2 — EXECUÇÃO CONCLUÍDA")
           print("=" * 70)
-
+          print("Versão:", cio_result.get("cio_ai_version", CIO_AI_VERSION))
+          print("Build:", cio_result.get("cio_ai_build", CIO_AI_BUILD))
+          print("Provider:", cio_result.get("provider"))
+          print("Modelo:", cio_result.get("model"))
+          print("Arquitetura:", cio_result.get("architecture"))
+          print("Sistemas:", cio_result.get("systems_count"))
           print(
-              "Provider:",
-              cio_result.get("provider"),
+              "Structural validation:",
+              cio_result.get("structural_validation", {}).get("status"),
           )
-
           print(
-              "Modelo:",
-              cio_result.get("model"),
+              "Source data changed:",
+              cio_result.get("source_data_changed"),
           )
-
-          print(
-              "Pipeline:",
-              summary.get("pipeline_status"),
-          )
-
-          print(
-              "Sistemas esperados:",
-              summary.get("systems_expected"),
-          )
-
-          print(
-              "Global Constraint:",
-              summary.get(
-                  "global_constraint_state"
-              ),
-          )
-
-          print(
-              "Hard Block:",
-              summary.get(
-                  "hard_block"
-              ),
-          )
-
-          print(
-              "Global Kill Switch:",
-              summary.get(
-                  "global_kill_switch"
-              ),
-          )
-
-          print(
-              "Número de restrições:",
-              summary.get(
-                  "restriction_count"
-              ),
-          )
-
           print()
-          print(
-              "Orchestrator:",
-              orchestrator_file,
-          )
-
-          print(
-              "Resultado CIO AI:",
-              cio_json_file,
-          )
-
-          print(
-              "Relatório:",
-              cio_report_file,
-          )
-
+          print("Input funcional:", integration_input_file)
+          print("Resultado CIO AI:", cio_json_file)
+          print("Relatório:", cio_report_file)
           print()
-          print(
-              "Execução em corretora: NÃO"
-          )
-
-          print(
-              "Decisão final humana: SIM"
-          )
-
+          print("Execução em corretora: NÃO")
+          print("Decisão final humana: SIM")
           print("=" * 70)
           PY
 
