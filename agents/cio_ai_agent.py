@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.5"
-CIO_AI_BUILD = "2.4.5-DETERMINISTIC-ALLOCATION-REPORT"
+CIO_AI_VERSION = "2.4.6"
+CIO_AI_BUILD = "2.4.6-DETERMINISTIC-US-EQUITIES-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.5",
+        "contract_version": "2.4.6",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -671,6 +671,53 @@ def render_deterministic_allocation_advisor(contract: Dict[str, Any]) -> str:
 
     return "\n".join(lines) if len(lines) > 1 else ""
 
+
+
+
+def render_deterministic_us_equities(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as 15 posições publicadas pelo sistema
+    portfolio-acoes-americana-teste. Não recalcula seleção, sinais, scores ou pesos.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    micro_us = layers.get("MICRO_US", [])
+    if not isinstance(micro_us, list):
+        return ""
+
+    payload: Dict[str, Any] = {}
+    for item in micro_us:
+        if isinstance(item, dict) and item.get("system_id") == "us_equities":
+            payload = _safe_dict(item.get("payload"))
+            break
+
+    positions = payload.get("positions")
+    if not isinstance(positions, list) or not positions:
+        return ""
+
+    def _fmt_pct(value: Any) -> str:
+        if value is None:
+            return "N/D"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            # stock_weight normalmente é fração (ex.: 0.10 = 10%).
+            pct = float(value) * 100.0 if abs(float(value)) <= 1.0 else float(value)
+            return f"{pct:.2f}".replace(".", ",") + "%"
+        return str(value)
+
+    lines = ["PORTFÓLIO DETERMINÍSTICO — AÇÕES AMERICANAS"]
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+        ticker = row.get("ticker") or "N/D"
+        sector = row.get("sector") or "N/D"
+        signal = row.get("entry_signal") or row.get("signal") or "N/D"
+        weight = _fmt_pct(row.get("stock_weight"))
+        priority = row.get("buy_priority_sector")
+        line = f"- {ticker}: setor {sector} | sinal {signal} | peso {weight}"
+        if priority is not None:
+            line += f" | prioridade {priority}"
+        lines.append(line + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
@@ -1159,6 +1206,14 @@ def run_cio_ai(
                     + "\n\n"
                     + allocation_text
                 )
+        if field == "micro_us":
+            us_equities_text = render_deterministic_us_equities(contract)
+            if us_equities_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + us_equities_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1277,6 +1332,7 @@ __all__ = [
     "build_comparison_evidence",
     "build_deterministic_risk_diagnosis",
     "render_deterministic_allocation_advisor",
+    "render_deterministic_us_equities",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
