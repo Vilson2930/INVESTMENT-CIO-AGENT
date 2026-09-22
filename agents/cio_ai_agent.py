@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.9"
-CIO_AI_BUILD = "2.4.9-DETERMINISTIC-B3-REPORT"
+CIO_AI_VERSION = "2.4.10"
+CIO_AI_BUILD = "2.4.10-DETERMINISTIC-FII-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.9",
+        "contract_version": "2.4.10",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -856,6 +856,60 @@ def render_deterministic_b3_equities(contract: Dict[str, Any]) -> str:
         if risk:
             line += f" | risco {risk}"
         lines.append(line + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+
+def render_deterministic_fii(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as posições publicadas pelo FII Institutional Scanner.
+    Não recalcula ranking, scores, pesos, timing, decisão operacional ou status final.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    micro_br = layers.get("MICRO_BR", [])
+    if not isinstance(micro_br, list):
+        return ""
+
+    payload: Dict[str, Any] = {}
+    for item in micro_br:
+        if isinstance(item, dict) and item.get("system_id") == "fii":
+            payload = _safe_dict(item.get("payload"))
+            break
+
+    positions = payload.get("positions")
+    if not isinstance(positions, list) or not positions:
+        return ""
+
+    def _fmt_pct(value: Any) -> str:
+        if value is None:
+            return "N/D"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            pct = float(value) * 100.0 if abs(float(value)) <= 1.0 else float(value)
+            return f"{pct:.2f}".replace(".", ",") + "%"
+        return str(value)
+
+    lines = ["CARTEIRA DETERMINÍSTICA — FII INSTITUTIONAL SCANNER"]
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+
+        ticker = row.get("ticker") or "N/D"
+        category = row.get("category") or "N/D"
+        segment = row.get("segment") or "N/D"
+        timing = row.get("timing_status") or "N/D"
+        decision = row.get("operational_decision") or "N/D"
+        final_status = row.get("final_status") or "N/D"
+        strategic_weight = _fmt_pct(row.get("strategic_weight"))
+        executable_weight = _fmt_pct(row.get("executable_weight"))
+        reserved_weight = _fmt_pct(row.get("reserved_weight"))
+
+        lines.append(
+            f"- {ticker}: categoria {category} | segmento {segment} | "
+            f"timing {timing} | decisão {decision} | status final {final_status} | "
+            f"peso estratégico {strategic_weight} | peso executável {executable_weight} | "
+            f"peso reservado {reserved_weight}."
+        )
 
     return "\n".join(lines) if len(lines) > 1 else ""
 
@@ -1376,6 +1430,13 @@ def run_cio_ai(
                     + "\n\n"
                     + b3_equities_text
                 )
+            fii_text = render_deterministic_fii(contract)
+            if fii_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + fii_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1498,6 +1559,7 @@ __all__ = [
     "render_deterministic_growth_opportunities",
     "render_deterministic_ai_infrastructure",
     "render_deterministic_b3_equities",
+    "render_deterministic_fii",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
