@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.10"
-CIO_AI_BUILD = "2.4.10-DETERMINISTIC-FII-REPORT"
+CIO_AI_VERSION = "2.4.11"
+CIO_AI_BUILD = "2.4.11-RISK-CAUSALITY-GUARD"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.10",
+        "contract_version": "2.4.11",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -1105,6 +1105,10 @@ def _build_section_prompt(
         ),
         "cross_layer_integration": (
             "Integre as quatro camadas usando SOMENTE authorized_relations e as sínteses factuais já fornecidas. "
+            "Ao integrar RISK com as demais camadas, preserve a regra de risk_diagnosis: "
+            "NÃO atribua o risco integrado, Survival, Stress, Kill Switch ou runway a BTC, "
+            "concentração em BTC ou qualquer componente isolado sem campo causal explícito na fonte. "
+
             "NÃO calcule contagens, NÃO intersecte conjuntos, NÃO reconstrua ticker/signal e NÃO crie nova relação factual. "
             "NÃO faça afirmações próprias sobre presença/ausência ou quantidade de sobreposição de tickers. "
             "Se a camada factual mostrar sobreposição, convergência ou divergência, interprete somente o significado disso. "
@@ -1113,6 +1117,10 @@ def _build_section_prompt(
         ),
         "integrated_cio_conclusion": (
             "Responda diretamente à pergunta de conclusion_contract em nível de síntese executiva. "
+            "Na conclusão, NÃO atribua risco integrado, Survival, Stress, Kill Switch ou runway "
+            "a BTC, concentração em BTC ou qualquer componente isolado sem causalidade explícita "
+            "na fonte; preserve apenas a coexistência factual quando for o caso. "
+
             "Use como BASE ANALÍTICA a seção cross_layer_integration já produzida e grounded nas quatro camadas. "
             "Extraia dela a característica dominante do cenário conjunto e as tensões que qualificam essa leitura. "
             "NÃO reenumere robôs, tickers, rankings, scores, pesos, contagens ou listas de sinais. "
@@ -1473,6 +1481,10 @@ def run_cio_ai(
     # Recebe a integração já grounded da seção 5 + contrato/relações, sem reabrir payloads brutos.
     conclusion_prior = {
         "cross_layer_integration": analysis["cross_layer_integration"],
+        "risk_causality_rule": (
+            "Não atribuir risco integrado, Survival, Stress, Kill Switch ou runway a BTC, "
+            "concentração em BTC ou qualquer componente isolado sem campo causal explícito na fonte."
+        ),
     }
     analysis["integrated_cio_conclusion"] = _request_final_section(
         client,
