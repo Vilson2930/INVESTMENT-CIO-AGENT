@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.6"
-CIO_AI_BUILD = "2.4.6-DETERMINISTIC-US-EQUITIES-REPORT"
+CIO_AI_VERSION = "2.4.7"
+CIO_AI_BUILD = "2.4.7-DETERMINISTIC-GROWTH-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.6",
+        "contract_version": "2.4.7",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -719,6 +719,48 @@ def render_deterministic_us_equities(contract: Dict[str, Any]) -> str:
 
     return "\n".join(lines) if len(lines) > 1 else ""
 
+
+
+def render_deterministic_growth_opportunities(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as oportunidades publicadas pelo Growth Opportunity Engine.
+    Não recalcula ranking, sinais, pesos, pullback, Falling Score ou confirmações.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    micro_us = layers.get("MICRO_US", [])
+    if not isinstance(micro_us, list):
+        return ""
+
+    payload: Dict[str, Any] = {}
+    for item in micro_us:
+        if isinstance(item, dict) and item.get("system_id") == "growth":
+            payload = _safe_dict(item.get("payload"))
+            break
+
+    opportunities = payload.get("opportunities")
+    if not isinstance(opportunities, list) or not opportunities:
+        return ""
+
+    lines = ["OPORTUNIDADES DETERMINÍSTICAS — GROWTH OPPORTUNITY ENGINE"]
+    for row in opportunities:
+        if not isinstance(row, dict):
+            continue
+        ticker = row.get("ticker") or "N/D"
+        signal = row.get("signal") or "N/D"
+        rank = row.get("source_rank")
+        weight = row.get("effective_weight")
+        reason = row.get("reason")
+
+        line = f"- {ticker}: sinal {signal}"
+        if rank is not None:
+            line += f" | ranking {rank}"
+        if weight is not None:
+            line += f" | peso efetivo {weight}"
+        if reason:
+            line += f" | motivo {reason}"
+        lines.append(line + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -1214,6 +1256,13 @@ def run_cio_ai(
                     + "\n\n"
                     + us_equities_text
                 )
+            growth_text = render_deterministic_growth_opportunities(contract)
+            if growth_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + growth_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1333,6 +1382,7 @@ __all__ = [
     "build_deterministic_risk_diagnosis",
     "render_deterministic_allocation_advisor",
     "render_deterministic_us_equities",
+    "render_deterministic_growth_opportunities",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
