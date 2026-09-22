@@ -736,6 +736,7 @@ jobs:
           from pathlib import Path
           from email.message import EmailMessage
           from email.utils import formatdate
+          from agents.cio_ai_agent import CIO_AI_VERSION
 
           smtp_user = os.environ.get("SMTP_USER", "").strip()
           smtp_password = os.environ.get("SMTP_PASSWORD", "").replace(" ", "").strip()
@@ -769,13 +770,13 @@ jobs:
               raise RuntimeError("EMAIL_TO não contém destinatário válido.")
 
           msg = EmailMessage()
-          msg["Subject"] = "Investment CIO AI V2.4.1 - Relatório Integrado"
+          msg["Subject"] = f"Investment CIO AI V{CIO_AI_VERSION} - Relatório Integrado"
           msg["From"] = smtp_user
           msg["To"] = ", ".join(recipients)
           msg["Date"] = formatdate(localtime=True)
 
           msg.set_content(
-              "INVESTMENT CIO AI V2.4.1\n\n"
+              f"INVESTMENT CIO AI V{CIO_AI_VERSION}\n\n"
               + report
               + "\n\nPDF completo desta mesma execução em anexo.\n"
               + "Execução em corretora: NÃO\n"
@@ -787,7 +788,7 @@ jobs:
               f"""\
               <html>
                 <body style="font-family:Arial,sans-serif;line-height:1.5;color:#222;">
-                  <h2>Investment CIO AI V2.4.1</h2>
+                  <h2>Investment CIO AI V{CIO_AI_VERSION}</h2>
                   <p><strong>Relatório integrado dos 7 sistemas - execução atual</strong></p>
                   <div style="padding:16px;border:1px solid #ddd;border-radius:8px;">
                     {html_report}
