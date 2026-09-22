@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.7"
-CIO_AI_BUILD = "2.4.7-DETERMINISTIC-GROWTH-REPORT"
+CIO_AI_VERSION = "2.4.8"
+CIO_AI_BUILD = "2.4.8-DETERMINISTIC-AI-INFRASTRUCTURE-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.7",
+        "contract_version": "2.4.8",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -761,6 +761,47 @@ def render_deterministic_growth_opportunities(contract: Dict[str, Any]) -> str:
         lines.append(line + ".")
 
     return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def render_deterministic_ai_infrastructure(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as oportunidades publicadas pelo AI Infrastructure Scanner.
+    Não recalcula ranking, sinais, scores, probabilidades ou decisões.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    micro_us = layers.get("MICRO_US", [])
+    if not isinstance(micro_us, list):
+        return ""
+
+    payload: Dict[str, Any] = {}
+    for item in micro_us:
+        if isinstance(item, dict) and item.get("system_id") == "ai_infrastructure":
+            payload = _safe_dict(item.get("payload"))
+            break
+
+    opportunities = payload.get("opportunities")
+    if not isinstance(opportunities, list) or not opportunities:
+        return ""
+
+    lines = ["OPORTUNIDADES DETERMINÍSTICAS — AI INFRASTRUCTURE SCANNER"]
+    for row in opportunities:
+        if not isinstance(row, dict):
+            continue
+
+        ticker = row.get("ticker") or "N/D"
+        signal = row.get("signal") or "N/D"
+        ranking = row.get("ranking")
+        decision = row.get("executive_decision")
+
+        line = f"- {ticker}: sinal {signal}"
+        if ranking is not None:
+            line += f" | ranking {ranking}"
+        if decision and decision != signal:
+            line += f" | decisão executiva {decision}"
+        lines.append(line + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
 
 def build_deterministic_fact_layer(contract: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -1263,6 +1304,13 @@ def run_cio_ai(
                     + "\n\n"
                     + growth_text
                 )
+            ai_infrastructure_text = render_deterministic_ai_infrastructure(contract)
+            if ai_infrastructure_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + ai_infrastructure_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1383,6 +1431,7 @@ __all__ = [
     "render_deterministic_allocation_advisor",
     "render_deterministic_us_equities",
     "render_deterministic_growth_opportunities",
+    "render_deterministic_ai_infrastructure",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
