@@ -26,8 +26,8 @@ except ImportError:
     OpenAI = None
 
 
-CIO_AI_VERSION = "2.4.8"
-CIO_AI_BUILD = "2.4.8-DETERMINISTIC-AI-INFRASTRUCTURE-REPORT"
+CIO_AI_VERSION = "2.4.9"
+CIO_AI_BUILD = "2.4.9-DETERMINISTIC-B3-REPORT"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = os.getenv("CIO_AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -469,7 +469,7 @@ def build_integration_contract(raw_input: Dict[str, Any]) -> Dict[str, Any]:
         })
 
     return {
-        "contract_version": "2.4.8",
+        "contract_version": "2.4.9",
         "architecture": "PYTHON_ORCHESTRATED_INTEGRATION_TO_CONCLUSION",
         "layers": {
             "SCENARIO": scenario,
@@ -798,6 +798,63 @@ def render_deterministic_ai_infrastructure(contract: Dict[str, Any]) -> str:
             line += f" | ranking {ranking}"
         if decision and decision != signal:
             line += f" | decisão executiva {decision}"
+        lines.append(line + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+
+def render_deterministic_b3_equities(contract: Dict[str, Any]) -> str:
+    """
+    Renderiza literalmente as posições publicadas pelo Portfolio-B3-Operational.
+    Não recalcula seleção, sinais técnicos, pesos, rankings, risco ou ação operacional.
+    """
+    layers = _safe_dict(contract.get("layers"))
+    micro_br = layers.get("MICRO_BR", [])
+    if not isinstance(micro_br, list):
+        return ""
+
+    payload: Dict[str, Any] = {}
+    for item in micro_br:
+        if isinstance(item, dict) and item.get("system_id") == "b3_equities":
+            payload = _safe_dict(item.get("payload"))
+            break
+
+    positions = payload.get("positions")
+    if not isinstance(positions, list) or not positions:
+        return ""
+
+    def _fmt_pct(value: Any) -> str:
+        if value is None:
+            return "N/D"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            pct = float(value) * 100.0 if abs(float(value)) <= 1.0 else float(value)
+            return f"{pct:.2f}".replace(".", ",") + "%"
+        return str(value)
+
+    lines = ["PORTFÓLIO DETERMINÍSTICO — AÇÕES B3"]
+    for row in positions:
+        if not isinstance(row, dict):
+            continue
+
+        ticker = row.get("ticker") or "N/D"
+        sector = row.get("sector") or "N/D"
+        decision = _safe_dict(row.get("decision"))
+        allocation = _safe_dict(row.get("allocation"))
+
+        signal = decision.get("signal") or "N/D"
+        operational_action = decision.get("operational_action")
+        conviction = decision.get("conviction")
+        risk = decision.get("risk")
+        weight = _fmt_pct(allocation.get("portfolio_weight"))
+
+        line = f"- {ticker}: setor {sector} | sinal {signal} | peso {weight}"
+        if operational_action:
+            line += f" | ação operacional {operational_action}"
+        if conviction:
+            line += f" | convicção {conviction}"
+        if risk:
+            line += f" | risco {risk}"
         lines.append(line + ".")
 
     return "\n".join(lines) if len(lines) > 1 else ""
@@ -1311,6 +1368,14 @@ def run_cio_ai(
                     + "\n\n"
                     + ai_infrastructure_text
                 )
+        if field == "micro_br":
+            b3_equities_text = render_deterministic_b3_equities(contract)
+            if b3_equities_text:
+                analysis[field] = (
+                    analysis[field].rstrip()
+                    + "\n\n"
+                    + b3_equities_text
+                )
         call_trace.append({"field": field, "status": "PASS"})
 
     # Camada factual determinística: números, relações, ticker/signal e interseções.
@@ -1432,6 +1497,7 @@ __all__ = [
     "render_deterministic_us_equities",
     "render_deterministic_growth_opportunities",
     "render_deterministic_ai_infrastructure",
+    "render_deterministic_b3_equities",
     "build_integration_contract",
     "build_ai_prompt",
     "validate_report_structure",
